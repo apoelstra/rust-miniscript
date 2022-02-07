@@ -354,11 +354,11 @@ where
             <<Pk as MiniscriptKey>::Hash as FromStr>::Err: ToString,
         {
             match tree {
-                Tree { name, args } if name.len() > 0 && args.len() == 0 => {
+                Tree { name, args } if !name.is_empty() && args.is_empty() => {
                     let script = Miniscript::<Pk, Tap>::from_str(name)?;
                     Ok(TapTree::Leaf(Arc::new(script)))
                 }
-                Tree { name, args } if name.len() == 0 && args.len() == 2 => {
+                Tree { name, args } if name.is_empty() && args.len() == 2 => {
                     let left = parse_tr_script_spend(&args[0])?;
                     let right = parse_tr_script_spend(&args[1])?;
                     Ok(TapTree::Tree(Arc::new(left), Arc::new(right)))
@@ -376,7 +376,7 @@ where
             match top.args.len() {
                 1 => {
                     let key = &top.args[0];
-                    if key.args.len() > 0 {
+                    if !key.args.is_empty() {
                         return Err(Error::Unexpected(format!(
                             "#{} script associated with `key-path` while parsing taproot descriptor",
                             key.args.len()
@@ -390,7 +390,7 @@ where
                 }
                 2 => {
                     let ref key = top.args[0];
-                    if key.args.len() > 0 {
+                    if !key.args.is_empty() {
                         return Err(Error::Unexpected(format!(
                             "#{} script associated with `key-path` while parsing taproot descriptor",
                             key.args.len()
@@ -505,7 +505,7 @@ fn parse_tr_tree(s: &str) -> Result<Tree, Error> {
 }
 
 fn split_once(inp: &str, delim: char) -> Option<(&str, &str)> {
-    let ret = if inp.len() == 0 {
+    let ret = if inp.is_empty() {
         None
     } else {
         let mut found = inp.len();
