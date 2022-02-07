@@ -213,7 +213,7 @@ impl<'a> Tree<'a> {
         // Filter out non-ASCII because we byte-index strings all over the
         // place and Rust gets very upset when you splinch a string.
         for ch in s.bytes() {
-            if ch > 0x7f {
+            if !ch.is_ascii() {
                 return Err(Error::Unprintable(ch));
             }
         }

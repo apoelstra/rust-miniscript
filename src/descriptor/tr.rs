@@ -458,7 +458,7 @@ impl<Pk: MiniscriptKey> fmt::Display for Tr<Pk> {
 // Helper function to parse string into miniscript tree form
 fn parse_tr_tree(s: &str) -> Result<Tree, Error> {
     for ch in s.bytes() {
-        if ch > 0x7f {
+        if !ch.is_ascii() {
             return Err(Error::Unprintable(ch));
         }
     }
