@@ -13,7 +13,7 @@ use bitcoin::util::taproot::{
 };
 use bitcoin::{self, secp256k1, Script};
 use errstr;
-use expression::{self, FromTree, Tree};
+use expression::{self, FromTree};
 use miniscript::{limits::TAPROOT_MAX_NODE_COUNT, Miniscript};
 use std::cmp::{self, max};
 use std::hash;
@@ -344,9 +344,11 @@ where
     <Pk as FromStr>::Err: ToString,
     <<Pk as MiniscriptKey>::Hash as FromStr>::Err: ToString,
 {
-    fn from_tree(top: &Tree) -> Result<Self, Error> {
+    fn from_tree(top: &expression::Tree) -> Result<Self, Error> {
         // Helper function to parse taproot script path
-        fn parse_tr_script_spend<Pk: MiniscriptKey>(tree: &Tree) -> Result<TapTree<Pk>, Error>
+        fn parse_tr_script_spend<Pk: MiniscriptKey>(
+            tree: &expression::Tree,
+        ) -> Result<TapTree<Pk>, Error>
         where
             Pk: MiniscriptKey + FromStr,
             Pk::Hash: FromStr,
@@ -354,11 +356,11 @@ where
             <<Pk as MiniscriptKey>::Hash as FromStr>::Err: ToString,
         {
             match tree {
-                Tree { name, args } if !name.is_empty() && args.is_empty() => {
+                expression::Tree { name, args } if !name.is_empty() && args.is_empty() => {
                     let script = Miniscript::<Pk, Tap>::from_str(name)?;
                     Ok(TapTree::Leaf(Arc::new(script)))
                 }
-                Tree { name, args } if name.is_empty() && args.len() == 2 => {
+                expression::Tree { name, args } if name.is_empty() && args.len() == 2 => {
                     let left = parse_tr_script_spend(&args[0])?;
                     let right = parse_tr_script_spend(&args[1])?;
                     Ok(TapTree::Tree(Arc::new(left), Arc::new(right)))
@@ -456,7 +458,7 @@ impl<Pk: MiniscriptKey> fmt::Display for Tr<Pk> {
 }
 
 // Helper function to parse string into miniscript tree form
-fn parse_tr_tree(s: &str) -> Result<Tree, Error> {
+fn parse_tr_tree(s: &str) -> Result<expression::Tree, Error> {
     for ch in s.bytes() {
         if !ch.is_ascii() {
             return Err(Error::Unprintable(ch));
@@ -466,11 +468,11 @@ fn parse_tr_tree(s: &str) -> Result<Tree, Error> {
     let ret = if s.len() > 3 && &s[..3] == "tr(" && s.as_bytes()[s.len() - 1] == b')' {
         let rest = &s[3..s.len() - 1];
         if !rest.contains(',') {
-            let internal_key = Tree {
+            let internal_key = expression::Tree {
                 name: rest,
                 args: vec![],
             };
-            return Ok(Tree {
+            return Ok(expression::Tree {
                 name: "tr",
                 args: vec![internal_key],
             });
@@ -479,19 +481,19 @@ fn parse_tr_tree(s: &str) -> Result<Tree, Error> {
         let (key, script) = split_once(rest, ',')
             .ok_or_else(|| Error::BadDescriptor("invalid taproot descriptor".to_string()))?;
 
-        let internal_key = Tree {
+        let internal_key = expression::Tree {
             name: key,
             args: vec![],
         };
         if script.is_empty() {
-            return Ok(Tree {
+            return Ok(expression::Tree {
                 name: "tr",
                 args: vec![internal_key],
             });
         }
         let (tree, rest) = expression::Tree::from_slice_helper_curly(script, 1)?;
         if rest.is_empty() {
-            Ok(Tree {
+            Ok(expression::Tree {
                 name: "tr",
                 args: vec![internal_key, tree],
             })
