@@ -17,7 +17,7 @@ use expression::{self, FromTree};
 use miniscript::{limits::TAPROOT_MAX_NODE_COUNT, Miniscript};
 use std::cmp::{self, max};
 use std::hash;
-use std::sync::{Arc, RwLock};
+use std::sync::{Arc, Mutex};
 use std::{fmt, str::FromStr};
 use Tap;
 use {Error, MiniscriptKey};
@@ -46,19 +46,21 @@ pub struct Tr<Pk: MiniscriptKey> {
     /// This will be [`None`] when the descriptor is not derived.
     /// This information will be cached automatically when it is required
     //
-    // It is also possible to wrap this in a further Arc<RwLock...> so that the cache
-    // is shared across clones of the this descriptor. But this (slightly) complicates
-    // the code, and it might be desirable for clone to keep separate caches
-    spend_info: RwLock<Option<Arc<TaprootSpendInfo>>>,
+    // The inner `Arc` here is because Rust does not allow us to return a reference
+    // to the contents of the `Option` from inside a `MutexGuard`. There is no outer
+    // `Arc` because when this structure is cloned, we create a whole new mutex.
+    spend_info: Mutex<Option<Arc<TaprootSpendInfo>>>,
 }
 
 impl<Pk: MiniscriptKey> Clone for Tr<Pk> {
     fn clone(&self) -> Self {
+        // When cloning, construct a new Mutex so that distinct clones don't
+        // cause blocking between each other. We clone only the internal `Arc`,
+        // so the clone is always cheap (in both time and space)
         Self {
             internal_key: self.internal_key.clone(),
             tree: self.tree.clone(),
-            // Cloning creates a new instance of RwLock
-            spend_info: RwLock::new(None),
+            spend_info: Mutex::new(self.spend_info.lock().expect("Lock poisoned").clone()),
         }
     }
 }
@@ -169,7 +171,7 @@ impl<Pk: MiniscriptKey> Tr<Pk> {
             Ok(Self {
                 internal_key,
                 tree,
-                spend_info: RwLock::new(None),
+                spend_info: Mutex::new(None),
             })
         } else {
             Err(Error::MaxRecursiveDepthExceeded)
@@ -212,64 +214,54 @@ impl<Pk: MiniscriptKey> Tr<Pk> {
     {
         // If the value is already cache, read it
         // read only panics if the lock is poisoned (meaning other thread having a lock panicked)
-        let spend_info = self
-            .spend_info
-            .read()
-            .expect("Lock poisoned")
-            .as_ref()
-            .map(Arc::clone);
-
-        match spend_info {
-            Some(spend_info) => spend_info,
-            None => {
-                // Get a new secp context
-                // This would be cheap operation after static context support from upstream
-                let secp = secp256k1::Secp256k1::verification_only();
-                // Key spend path with no merkle root
-                let data = if self.tree.is_none() {
-                    TaprootSpendInfo::new_key_spend(
-                        &secp,
-                        self.internal_key.to_x_only_pubkey(),
-                        None,
-                    )
-                } else {
-                    let mut builder = TaprootBuilder::new();
-                    for (depth, ms) in self.iter_scripts() {
-                        let script = ms.encode();
-                        builder = builder
-                            .add_leaf(depth, script)
-                            .expect("Computing spend data on a valid Tree should always succeed");
-                    }
-                    // Assert builder cannot error here because we have a well formed descriptor
-                    match builder.finalize(&secp, self.internal_key.to_x_only_pubkey()) {
-                        Ok(data) => data,
-                        Err(e) => match e {
-                            TaprootBuilderError::InvalidMerkleTreeDepth(_) => {
-                                unreachable!("Depth checked in struct construction")
-                            }
-                            TaprootBuilderError::NodeNotInDfsOrder => {
-                                unreachable!("Insertion is called in DFS order")
-                            }
-                            TaprootBuilderError::OverCompleteTree => {
-                                unreachable!("Taptree is a well formed tree")
-                            }
-                            TaprootBuilderError::InvalidInternalKey(_) => {
-                                unreachable!("Internal key checked for validity")
-                            }
-                            TaprootBuilderError::IncompleteTree => {
-                                unreachable!("Taptree is a well formed tree")
-                            }
-                            TaprootBuilderError::EmptyTree => {
-                                unreachable!("Taptree is a well formed tree with atleast 1 element")
-                            }
-                        },
-                    }
-                };
-                let spend_info = Arc::new(data);
-                *self.spend_info.write().expect("Lock poisoned") = Some(Arc::clone(&spend_info));
-                spend_info
-            }
+        let read_lock = self.spend_info.lock().expect("Lock poisoned");
+        if let Some(ref spend_info) = *read_lock {
+            return spend_info.clone();
         }
+        drop(read_lock);
+
+        // Get a new secp context
+        // This would be cheap operation after static context support from upstream
+        let secp = secp256k1::Secp256k1::verification_only();
+        // Key spend path with no merkle root
+        let data = if self.tree.is_none() {
+            TaprootSpendInfo::new_key_spend(&secp, self.internal_key.to_x_only_pubkey(), None)
+        } else {
+            let mut builder = TaprootBuilder::new();
+            for (depth, ms) in self.iter_scripts() {
+                let script = ms.encode();
+                builder = builder
+                    .add_leaf(depth, script)
+                    .expect("Computing spend data on a valid Tree should always succeed");
+            }
+            // Assert builder cannot error here because we have a well formed descriptor
+            match builder.finalize(&secp, self.internal_key.to_x_only_pubkey()) {
+                Ok(data) => data,
+                Err(e) => match e {
+                    TaprootBuilderError::InvalidMerkleTreeDepth(_) => {
+                        unreachable!("Depth checked in struct construction")
+                    }
+                    TaprootBuilderError::NodeNotInDfsOrder => {
+                        unreachable!("Insertion is called in DFS order")
+                    }
+                    TaprootBuilderError::OverCompleteTree => {
+                        unreachable!("Taptree is a well formed tree")
+                    }
+                    TaprootBuilderError::InvalidInternalKey(_) => {
+                        unreachable!("Internal key checked for validity")
+                    }
+                    TaprootBuilderError::IncompleteTree => {
+                        unreachable!("Taptree is a well formed tree")
+                    }
+                    TaprootBuilderError::EmptyTree => {
+                        unreachable!("Taptree is a well formed tree with atleast 1 element")
+                    }
+                },
+            }
+        };
+        let spend_info = Arc::new(data);
+        *self.spend_info.lock().expect("Lock poisoned") = Some(spend_info.clone());
+        spend_info
     }
 }
 
@@ -387,7 +379,7 @@ where
                     Ok(Tr {
                         internal_key: expression::terminal(key, Pk::from_str)?,
                         tree: None,
-                        spend_info: RwLock::new(None),
+                        spend_info: Mutex::new(None),
                     })
                 }
                 2 => {
@@ -403,7 +395,7 @@ where
                     Ok(Tr {
                         internal_key: expression::terminal(key, Pk::from_str)?,
                         tree: Some(ret),
-                        spend_info: RwLock::new(None),
+                        spend_info: Mutex::new(None),
                     })
                 }
                 _ => {
@@ -668,7 +660,7 @@ impl<P: MiniscriptKey, Q: MiniscriptKey> TranslatePk<P, Q> for Tr<P> {
                 Some(tree) => Some(tree.translate_helper(&mut translatefpk, &mut translatefpkh)?),
                 None => None,
             },
-            spend_info: RwLock::new(None),
+            spend_info: Mutex::new(None),
         };
         Ok(translate_desc)
     }
