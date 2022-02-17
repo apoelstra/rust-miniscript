@@ -244,7 +244,8 @@ impl<'txin> Interpreter<'txin> {
                     bitcoin::EcdsaSigHashType::NonePlusAnyoneCanPay => sighashes[4],
                     bitcoin::EcdsaSigHashType::SinglePlusAnyoneCanPay => sighashes[5],
                 };
-                secp.verify_ecdsa(&sighash, &ecdsa_sig.sig, &pk.key).is_ok()
+                secp.verify_ecdsa(&sighash, &ecdsa_sig.sig, &pk.inner)
+                    .is_ok()
             },
         )
     }
@@ -825,7 +826,7 @@ mod tests {
 
             let sk = secp256k1::SecretKey::from_slice(&sk[..]).expect("secret key");
             let pk = bitcoin::PublicKey {
-                key: secp256k1::PublicKey::from_secret_key(&secp_sign, &sk),
+                inner: secp256k1::PublicKey::from_secret_key(&secp_sign, &sk),
                 compressed: true,
             };
             let sig = secp_sign.sign_ecdsa(&msg, &sk);
@@ -842,7 +843,8 @@ mod tests {
     fn sat_constraints() {
         let (pks, der_sigs, secp_sigs, sighash, secp) = setup_keys_sigs(10);
         let vfyfn_ = |pk: &bitcoin::PublicKey, ecdsa_sig: bitcoin::EcdsaSig| {
-            secp.verify_ecdsa(&sighash, &ecdsa_sig.sig, &pk.key).is_ok()
+            secp.verify_ecdsa(&sighash, &ecdsa_sig.sig, &pk.inner)
+                .is_ok()
         };
 
         fn from_stack<'txin, 'elem, F>(

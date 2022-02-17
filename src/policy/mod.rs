@@ -343,7 +343,7 @@ mod tests {
 
         let ms_str: Miniscript<bitcoin::PublicKey, Segwitv0> = format!(
             "andor(multi(1,{}),older(42),c:pk_k({}))",
-            key_a.key, key_b.key
+            key_a.inner, key_b.inner
         )
         .parse()
         .unwrap();

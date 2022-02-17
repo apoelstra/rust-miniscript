@@ -1011,10 +1011,7 @@ mod tests {
         let secp = secp256k1::Secp256k1::new();
         let sk =
             secp256k1::SecretKey::from_slice(&b"sally was a secret key, she said"[..]).unwrap();
-        let pk = bitcoin::PublicKey {
-            key: secp256k1::PublicKey::from_secret_key(&secp, &sk),
-            compressed: true,
-        };
+        let pk = bitcoin::PublicKey::new(secp256k1::PublicKey::from_secret_key(&secp, &sk));
         let msg = secp256k1::Message::from_slice(&b"michael was a message, amusingly"[..])
             .expect("32 bytes");
         let sig = secp.sign_ecdsa(&msg, &sk);

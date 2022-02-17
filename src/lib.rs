@@ -197,7 +197,7 @@ pub trait ToPublicKey: MiniscriptKey {
     /// Convert an object to x-only pubkey
     fn to_x_only_pubkey(&self) -> bitcoin::secp256k1::XOnlyPublicKey {
         let pk = self.to_public_key();
-        bitcoin::secp256k1::XOnlyPublicKey::from(pk.key)
+        bitcoin::secp256k1::XOnlyPublicKey::from(pk.inner)
     }
 
     /// Converts a hashed version of the public key to a `hash160` hash.

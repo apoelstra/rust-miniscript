@@ -495,7 +495,7 @@ mod tests {
             sk[2] = (i >> 16) as u8;
 
             let pk = bitcoin::PublicKey {
-                key: secp256k1::PublicKey::from_secret_key(
+                inner: secp256k1::PublicKey::from_secret_key(
                     &secp,
                     &secp256k1::SecretKey::from_slice(&sk[..]).expect("secret key"),
                 ),
@@ -743,7 +743,7 @@ mod tests {
 
         string_rtt(
             script,
-            "[B/onduesm]c:[K/onduesm]pk_k(PublicKey { compressed: true, key: PublicKey(aa4c32e50fb34a95a372940ae3654b692ea35294748c3dd2c08b29f87ba9288c8294efcb73dc719e45b91c45f084e77aebc07c1ff3ed8f37935130a36304a340) })",
+            "[B/onduesm]c:[K/onduesm]pk_k(PublicKey { compressed: true, inner: PublicKey(aa4c32e50fb34a95a372940ae3654b692ea35294748c3dd2c08b29f87ba9288c8294efcb73dc719e45b91c45f084e77aebc07c1ff3ed8f37935130a36304a340) })",
             "pk(028c28a97bf8298bc0d23d8c749452a32e694b65e30a9472a3954ab30fe5324caa)"
         );
 
@@ -751,7 +751,7 @@ mod tests {
 
         string_rtt(
             script,
-            "[B/onduesm]c:[K/onduesm]pk_k(PublicKey { compressed: true, key: PublicKey(aa4c32e50fb34a95a372940ae3654b692ea35294748c3dd2c08b29f87ba9288c8294efcb73dc719e45b91c45f084e77aebc07c1ff3ed8f37935130a36304a340) })",
+            "[B/onduesm]c:[K/onduesm]pk_k(PublicKey { compressed: true, inner: PublicKey(aa4c32e50fb34a95a372940ae3654b692ea35294748c3dd2c08b29f87ba9288c8294efcb73dc719e45b91c45f084e77aebc07c1ff3ed8f37935130a36304a340) })",
             "pk(028c28a97bf8298bc0d23d8c749452a32e694b65e30a9472a3954ab30fe5324caa)"
         );
 
@@ -759,7 +759,7 @@ mod tests {
 
         string_rtt(
             script,
-            "[B/onufsm]t[V/onfsm]v[B/onduesm]c:[K/onduesm]pk_k(PublicKey { compressed: true, key: PublicKey(aa4c32e50fb34a95a372940ae3654b692ea35294748c3dd2c08b29f87ba9288c8294efcb73dc719e45b91c45f084e77aebc07c1ff3ed8f37935130a36304a340) })",
+            "[B/onufsm]t[V/onfsm]v[B/onduesm]c:[K/onduesm]pk_k(PublicKey { compressed: true, inner: PublicKey(aa4c32e50fb34a95a372940ae3654b692ea35294748c3dd2c08b29f87ba9288c8294efcb73dc719e45b91c45f084e77aebc07c1ff3ed8f37935130a36304a340) })",
             "tv:pk(028c28a97bf8298bc0d23d8c749452a32e694b65e30a9472a3954ab30fe5324caa)"
         );
 

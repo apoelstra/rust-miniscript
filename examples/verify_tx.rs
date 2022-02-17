@@ -167,7 +167,9 @@ fn main() {
 
     let iter = interpreter.iter(|pk, ecdsa_sig| {
         ecdsa_sig.hash_ty == bitcoin::EcdsaSigHashType::All
-            && secp.verify_ecdsa(&message, &ecdsa_sig.sig, &pk.key).is_ok()
+            && secp
+                .verify_ecdsa(&message, &ecdsa_sig.sig, &pk.inner)
+                .is_ok()
     });
     println!("\nExample three");
     for elem in iter {

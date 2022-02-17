@@ -4,11 +4,10 @@ use bitcoin::{
     self,
     hashes::Hash,
     hashes::{hex::FromHex, HashEngine},
-    schnorr::XOnlyPublicKey,
     secp256k1,
     secp256k1::{Secp256k1, Signing},
     util::bip32,
-    XpubIdentifier,
+    XOnlyPublicKey, XpubIdentifier,
 };
 
 use {MiniscriptKey, ToPublicKey};

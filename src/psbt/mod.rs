@@ -23,7 +23,6 @@ use std::collections::BTreeMap;
 use std::{error, fmt};
 
 use bitcoin;
-use bitcoin::blockdata::witness::Witness;
 use bitcoin::hashes::{hash160, ripemd160, sha256, sha256d};
 use bitcoin::secp256k1::{self, Secp256k1};
 use bitcoin::util::psbt::PartiallySignedTransaction as Psbt;
@@ -91,6 +90,8 @@ pub enum InputError {
     NonEmptyWitnessScript,
     /// Non empty Redeem script
     NonEmptyRedeemScript,
+    /// Non Standard sighash type
+    NonStandardSigHashType(bitcoin::blockdata::transaction::NonStandardSigHashType),
     /// Sighash did not match
     WrongSigHashFlag {
         /// required sighash type
@@ -122,7 +123,7 @@ impl fmt::Display for InputError {
             InputError::InvalidSignature {
                 ref pubkey,
                 ref sig,
-            } => write!(f, "PSBT: bad signature {} for key {:?}", pubkey.key, sig),
+            } => write!(f, "PSBT: bad signature {} for key {:?}", pubkey, sig),
             InputError::KeyErr(ref e) => write!(f, "Key Err: {}", e),
             InputError::Interpreter(ref e) => write!(f, "Interpreter: {}", e),
             InputError::SecpErr(ref e) => write!(f, "Secp Err: {}", e),
@@ -165,11 +166,12 @@ impl fmt::Display for InputError {
                 f,
                 "PSBT: signature with key {:?} had \
                  sighashflag {:?} rather than required {:?}",
-                pubkey.key, got, required
+                pubkey, got, required
             ),
             InputError::CouldNotSatisfyTr => {
                 write!(f, "Could not satisfy Tr descriptor")
             }
+            InputError::NonStandardSigHashType(e) => write!(f, "Non-standard sighash type {}", e),
         }
     }
 }
@@ -268,7 +270,7 @@ impl<'psbt, Pk: MiniscriptKey + ToPublicKey> Satisfier<Pk> for PsbtInputSatisfie
     fn lookup_ecdsa_sig(&self, pk: &Pk) -> Option<bitcoin::EcdsaSig> {
         self.psbt.inputs[self.index]
             .partial_sigs
-            .get(&pk.to_public_key())
+            .get(&pk.to_public_key().inner)
             .map(|sig| *sig)
     }
 
@@ -279,9 +281,11 @@ impl<'psbt, Pk: MiniscriptKey + ToPublicKey> Satisfier<Pk> for PsbtInputSatisfie
         self.psbt.inputs[self.index]
             .partial_sigs
             .iter()
-            .filter(|&(pubkey, _sig)| pubkey.to_pubkeyhash() == Pk::hash_to_hash160(pkh))
+            .filter(|&(pubkey, _sig)| {
+                bitcoin::PublicKey::new(*pubkey).to_pubkeyhash() == Pk::hash_to_hash160(pkh)
+            })
             .next()
-            .map(|(pk, sig)| (*pk, *sig))
+            .map(|(pk, sig)| (bitcoin::PublicKey::new(*pk), *sig))
     }
 
     fn check_after(&self, n: u32) -> bool {
@@ -380,7 +384,7 @@ pub fn extract<C: secp256k1::Verification>(
         }
 
         if let Some(witness) = input.final_script_witness.as_ref() {
-            ret.input[n].witness = Witness::from_vec(witness.to_owned());
+            ret.input[n].witness = witness.clone();
         }
         if let Some(script_sig) = input.final_script_sig.as_ref() {
             ret.input[n].script_sig = script_sig.clone();

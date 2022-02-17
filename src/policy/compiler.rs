@@ -1185,7 +1185,7 @@ mod tests {
             sk[2] = (i >> 16) as u8;
 
             let pk = bitcoin::PublicKey {
-                key: secp256k1::PublicKey::from_secret_key(
+                inner: secp256k1::PublicKey::from_secret_key(
                     &secp,
                     &secp256k1::SecretKey::from_slice(&sk[..]).expect("sk"),
                 ),

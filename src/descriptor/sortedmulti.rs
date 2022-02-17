@@ -140,9 +140,9 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
         // Sort pubkeys lexicographically according to BIP 67
         pks.sort_by(|a, b| {
             a.to_public_key()
-                .key
+                .inner
                 .serialize()
-                .partial_cmp(&b.to_public_key().key.serialize())
+                .partial_cmp(&b.to_public_key().inner.serialize())
                 .unwrap()
         });
         Terminal::Multi(self.k, pks)

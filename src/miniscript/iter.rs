@@ -473,7 +473,7 @@ pub mod test {
     pub fn gen_bitcoin_pubkeys(n: usize, compressed: bool) -> Vec<bitcoin::PublicKey> {
         gen_secp_pubkeys(n)
             .into_iter()
-            .map(|key| bitcoin::PublicKey { key, compressed })
+            .map(|inner| bitcoin::PublicKey { inner, compressed })
             .collect()
     }
 
