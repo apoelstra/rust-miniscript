@@ -300,7 +300,7 @@ pub fn interpreter_check<C: secp256k1::Verification>(
         let csv = psbt.unsigned_tx.input[index].sequence;
         let amt = get_amt(psbt, index).map_err(|e| Error::InputError(e, index))?;
 
-        let mut interpreter =
+        let interpreter =
             interpreter::Interpreter::from_txdata(spk, &script_sig, &witness, cltv, csv)
                 .map_err(|e| Error::InputError(InputError::Interpreter(e), index))?;
 
