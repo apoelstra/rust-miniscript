@@ -20,11 +20,13 @@
 //!
 
 use bitcoin::blockdata::witness::Witness;
+use bitcoin::util::sighash;
 use std::fmt;
 use std::str::FromStr;
 
 use bitcoin::hashes::{hash160, ripemd160, sha256, sha256d};
-use bitcoin::util::sighash;
+// use bitcoin::util::sighash;
+#[allow(unused_imports)]
 use bitcoin::{self, secp256k1};
 use miniscript::context::NoChecksEcdsa;
 use miniscript::ScriptContext;
@@ -36,7 +38,7 @@ mod error;
 mod inner;
 mod stack;
 
-use crate::MiniscriptKey;
+use MiniscriptKey;
 
 pub use self::error::Error;
 use self::error::PkEvalErrInner;
@@ -173,10 +175,12 @@ impl<'txin> Interpreter<'txin> {
     ///
     /// In case the script is actually dissatisfied, this may return several values
     /// before ultimately returning an error.
-    pub fn iter<'iter, F: FnMut(&KeySigPair) -> bool>(
+    /// See [Self::iter_assume_sigs] for a simpler API without information about Prevouts
+    /// but skips the signature verification
+    pub fn iter<'iter>(
         &'iter self,
-        verify_sig: F,
-    ) -> Iter<'txin, 'iter, F> {
+        verify_sig: Box<dyn FnMut(&KeySigPair) -> bool + 'iter>,
+    ) -> Iter<'txin, 'iter> {
         Iter {
             verify_sig: verify_sig,
             public_key: if let inner::Inner::PublicKey(ref pk, _) = self.inner {
@@ -200,6 +204,40 @@ impl<'txin> Interpreter<'txin> {
             height: self.height,
             has_errored: false,
         }
+    }
+
+    /// Iterate over all satisfied constraints while checking signatures
+    /// Not all fields are used by legacy/segwitv0 descriptors; if you are sure this is a legacy
+    /// spend (you can check with the `is_legacy\is_segwitv0` method) you can provide dummy data for
+    /// the amount/prevouts.
+    /// - For legacy outputs, no information about prevouts is required
+    /// - For segwitv0 outputs, prevout at corresponding index with correct amount must be provided
+    /// - For taproot outputs, information about all prevouts must be supplied
+    pub fn iter_check_sigs<'iter, C: secp256k1::Verification>(
+        &'iter self,
+        secp: &'iter secp256k1::Secp256k1<C>,
+        tx: &'iter bitcoin::Transaction, // actually a 'txin, but 'txin : 'iter
+        input_idx: usize,
+        prevouts: &'iter sighash::Prevouts, // actually a 'prevouts, but 'prevouts: 'iter
+    ) -> Iter<'txin, 'iter> {
+        fn verify_sig<C: secp256k1::Verification>(
+            _secp: &secp256k1::Secp256k1<C>,
+            _tx: &bitcoin::Transaction,
+            _input_idx: usize,
+            _prevouts: &sighash::Prevouts,
+            _sig: &KeySigPair,
+        ) -> bool {
+            panic!("TODO");
+        }
+        let _warn_error = &self.script_code;
+        self.iter(Box::new(move |sig| {
+            verify_sig(secp, tx, input_idx, prevouts, sig)
+        }))
+    }
+
+    /// Creates an iterator over the satisfied spending conditions without checking signatures
+    pub fn iter_assume_sigs<'iter>(&'iter self) -> Iter<'txin, 'iter> {
+        self.iter(Box::new(|_| true))
     }
 
     /// Outputs a "descriptor" string which reproduces the spent coins
@@ -297,112 +335,6 @@ impl<'txin> Interpreter<'txin> {
     pub fn inferred_descriptor(&self) -> Result<Descriptor<bitcoin::PublicKey>, ::Error> {
         Descriptor::from_str(&self.inferred_descriptor_string())
     }
-
-    /// Returns a sighash over the entire transaction which can be used to verify signatures
-    /// in the descriptor
-    ///
-    /// Not all fields are used by legacy descriptors; if you are sure this is a legacy
-    /// spend (you can check with the `is_legacy` method) you can provide dummy data for
-    /// the amount.
-    pub fn sighash_message(
-        &self,
-        unsigned_tx: &bitcoin::Transaction,
-        input_idx: usize,
-        amount: u64,
-        sighash_type: bitcoin::EcdsaSigHashType,
-    ) -> Result<secp256k1::Message, Error> {
-        let mut cache = sighash::SigHashCache::new(unsigned_tx);
-        let hash = if self.is_legacy() {
-            cache.legacy_signature_hash(
-                input_idx,
-                &self
-                    .script_code
-                    .as_ref()
-                    .expect("legacy sighash has script code"),
-                sighash_type.as_u32(),
-            )?
-        } else {
-            cache.segwit_signature_hash(
-                input_idx,
-                &self
-                    .script_code
-                    .as_ref()
-                    .expect("segwitv0  sighash has script code"),
-                amount,
-                sighash_type,
-            )?
-        };
-
-        Ok(secp256k1::Message::from_slice(&hash[..])
-            .expect("cryptographically unreachable for this to fail"))
-    }
-
-    /// Returns a closure which can be given to the `iter` method to check all signatures
-    pub fn sighash_verify<'a, C: secp256k1::Verification>(
-        &self,
-        secp: &'a secp256k1::Secp256k1<C>,
-        unsigned_tx: &'a bitcoin::Transaction,
-        input_idx: usize,
-        amount: u64,
-    ) -> Result<impl Fn(&bitcoin::PublicKey, bitcoin::EcdsaSig) -> bool + 'a, Error> {
-        // Precompute all sighash types because the borrowck doesn't like us
-        // pulling self into the closure
-        let sighashes = [
-            self.sighash_message(
-                unsigned_tx,
-                input_idx,
-                amount,
-                bitcoin::EcdsaSigHashType::All,
-            )?,
-            self.sighash_message(
-                unsigned_tx,
-                input_idx,
-                amount,
-                bitcoin::EcdsaSigHashType::None,
-            )?,
-            self.sighash_message(
-                unsigned_tx,
-                input_idx,
-                amount,
-                bitcoin::EcdsaSigHashType::Single,
-            )?,
-            self.sighash_message(
-                unsigned_tx,
-                input_idx,
-                amount,
-                bitcoin::EcdsaSigHashType::AllPlusAnyoneCanPay,
-            )?,
-            self.sighash_message(
-                unsigned_tx,
-                input_idx,
-                amount,
-                bitcoin::EcdsaSigHashType::NonePlusAnyoneCanPay,
-            )?,
-            self.sighash_message(
-                unsigned_tx,
-                input_idx,
-                amount,
-                bitcoin::EcdsaSigHashType::SinglePlusAnyoneCanPay,
-            )?,
-        ];
-
-        Ok(
-            move |pk: &bitcoin::PublicKey, ecdsa_sig: bitcoin::EcdsaSig| {
-                // This is an awkward way to do this lookup, but it lets us do exhaustiveness
-                // checking in case future rust-bitcoin versions add new sighash types
-                let sighash = match ecdsa_sig.hash_ty {
-                    bitcoin::EcdsaSigHashType::All => sighashes[0],
-                    bitcoin::EcdsaSigHashType::None => sighashes[1],
-                    bitcoin::EcdsaSigHashType::Single => sighashes[2],
-                    bitcoin::EcdsaSigHashType::AllPlusAnyoneCanPay => sighashes[3],
-                    bitcoin::EcdsaSigHashType::NonePlusAnyoneCanPay => sighashes[4],
-                    bitcoin::EcdsaSigHashType::SinglePlusAnyoneCanPay => sighashes[5],
-                };
-                secp.verify_ecdsa(&sighash, &ecdsa_sig.sig, &pk.inner)
-                    .is_ok()
-            },
-        )
-    }
 }
 
 /// Type of HashLock used for SatisfiedConstraint structure
@@ -480,8 +412,8 @@ struct NodeEvaluationState<'intp> {
 ///
 /// In case the script is actually dissatisfied, this may return several values
 /// before ultimately returning an error.
-pub struct Iter<'intp, 'txin: 'intp, F: FnMut(&KeySigPair) -> bool> {
-    verify_sig: F,
+pub struct Iter<'intp, 'txin: 'intp> {
+    verify_sig: Box<dyn FnMut(&KeySigPair) -> bool + 'intp>,
     public_key: Option<&'intp BitcoinKey>,
     state: Vec<NodeEvaluationState<'intp>>,
     stack: Stack<'txin>,
@@ -491,10 +423,9 @@ pub struct Iter<'intp, 'txin: 'intp, F: FnMut(&KeySigPair) -> bool> {
 }
 
 ///Iterator for Iter
-impl<'intp, 'txin: 'intp, F> Iterator for Iter<'intp, 'txin, F>
+impl<'intp, 'txin: 'intp> Iterator for Iter<'intp, 'txin>
 where
     NoChecksEcdsa: ScriptContext,
-    F: FnMut(&KeySigPair) -> bool,
 {
     type Item = Result<SatisfiedConstraint, Error>;
 
@@ -512,10 +443,9 @@ where
     }
 }
 
-impl<'intp, 'txin: 'intp, F> Iter<'intp, 'txin, F>
+impl<'intp, 'txin: 'intp> Iter<'intp, 'txin>
 where
     NoChecksEcdsa: ScriptContext,
-    F: FnMut(&KeySigPair) -> bool,
 {
     /// Helper function to push a NodeEvaluationState on state stack
     fn push_evaluation_state(
@@ -917,14 +847,11 @@ where
 }
 
 /// Helper function to verify serialized signature
-fn verify_sersig<'txin, F>(
-    verify_sig: F,
+fn verify_sersig<'txin>(
+    verify_sig: &mut Box<dyn FnMut(&KeySigPair) -> bool + 'txin>,
     pk: &BitcoinKey,
     sigser: &[u8],
-) -> Result<KeySigPair, Error>
-where
-    F: FnOnce(&KeySigPair) -> bool,
-{
+) -> Result<KeySigPair, Error> {
     match pk {
         BitcoinKey::Fullkey(pk) => {
             let ecdsa_sig = bitcoin::EcdsaSig::from_slice(sigser)?;
@@ -1002,8 +929,9 @@ mod tests {
     #[test]
     fn sat_constraints() {
         let (pks, der_sigs, ecdsa_sigs, sighash, secp) = setup_keys_sigs(10);
+        let secp_ref = &secp;
         let vfyfn_ = |pksig: &KeySigPair| match pksig {
-            KeySigPair::Ecdsa(pk, ecdsa_sig) => secp
+            KeySigPair::Ecdsa(pk, ecdsa_sig) => secp_ref
                 .verify_ecdsa(&sighash, &ecdsa_sig.sig, &pk.inner)
                 .is_ok(),
             KeySigPair::Schnorr(_xpk, _schnorr_sig) => {
@@ -1011,14 +939,11 @@ mod tests {
             }
         };
 
-        fn from_stack<'txin, 'elem, F>(
-            verify_fn: F,
+        fn from_stack<'txin, 'elem>(
+            verify_fn: Box<dyn FnMut(&KeySigPair) -> bool + 'elem>,
             stack: Stack<'txin>,
             ms: &'elem Miniscript<BitcoinKey, NoChecksEcdsa>,
-        ) -> Iter<'elem, 'txin, F>
-        where
-            F: FnMut(&KeySigPair) -> bool,
-        {
+        ) -> Iter<'elem, 'txin> {
             Iter {
                 verify_sig: verify_fn,
                 stack: stack,
@@ -1054,8 +979,8 @@ mod tests {
         let ripemd160 = no_checks_ms(&format!("ripemd160({})", ripemd160_hash));
 
         let stack = Stack::from(vec![stack::Element::Push(&der_sigs[0])]);
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &pk);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &pk);
         let pk_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
             pk_satisfied.unwrap(),
@@ -1066,8 +991,8 @@ mod tests {
 
         //Check Pk failure with wrong signature
         let stack = Stack::from(vec![stack::Element::Dissatisfied]);
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &pk);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &pk);
         let pk_err: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert!(pk_err.is_err());
 
@@ -1077,8 +1002,8 @@ mod tests {
             stack::Element::Push(&der_sigs[1]),
             stack::Element::Push(&pk_bytes),
         ]);
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &pkh);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &pkh);
         let pkh_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
             pkh_satisfied.unwrap(),
@@ -1090,8 +1015,8 @@ mod tests {
 
         //Check After
         let stack = Stack::from(vec![]);
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &after);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &after);
         let after_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
             after_satisfied.unwrap(),
@@ -1100,8 +1025,8 @@ mod tests {
 
         //Check Older
         let stack = Stack::from(vec![]);
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &older);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &older);
         let older_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
             older_satisfied.unwrap(),
@@ -1110,8 +1035,8 @@ mod tests {
 
         //Check Sha256
         let stack = Stack::from(vec![stack::Element::Push(&preimage)]);
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &sha256);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &sha256);
         let sah256_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
             sah256_satisfied.unwrap(),
@@ -1123,8 +1048,8 @@ mod tests {
 
         //Check Shad256
         let stack = Stack::from(vec![stack::Element::Push(&preimage)]);
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &hash256);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &hash256);
         let sha256d_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
             sha256d_satisfied.unwrap(),
@@ -1136,8 +1061,8 @@ mod tests {
 
         //Check hash160
         let stack = Stack::from(vec![stack::Element::Push(&preimage)]);
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &hash160);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &hash160);
         let hash160_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
             hash160_satisfied.unwrap(),
@@ -1149,8 +1074,8 @@ mod tests {
 
         //Check ripemd160
         let stack = Stack::from(vec![stack::Element::Push(&preimage)]);
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &ripemd160);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &ripemd160);
         let ripemd160_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
             ripemd160_satisfied.unwrap(),
@@ -1172,8 +1097,8 @@ mod tests {
             pks[0],
             pks[1].to_pubkeyhash()
         ));
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &elem);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &elem);
 
         let and_v_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
@@ -1198,8 +1123,8 @@ mod tests {
             "and_b(c:pk_k({}),sjtv:sha256({}))",
             pks[0], sha256_hash
         ));
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &elem);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &elem);
 
         let and_b_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
@@ -1226,8 +1151,8 @@ mod tests {
             sha256_hash,
             pks[1].to_pubkeyhash(),
         ));
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &elem);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &elem);
 
         let and_or_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
@@ -1250,8 +1175,8 @@ mod tests {
             stack::Element::Push(&pk_bytes),
             stack::Element::Dissatisfied,
         ]);
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &elem);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &elem);
 
         let and_or_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
@@ -1271,8 +1196,8 @@ mod tests {
             "or_b(c:pk_k({}),sjtv:sha256({}))",
             pks[0], sha256_hash
         ));
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &elem);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &elem);
 
         let or_b_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
@@ -1289,8 +1214,8 @@ mod tests {
             "or_d(c:pk_k({}),jtv:sha256({}))",
             pks[0], sha256_hash
         ));
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &elem);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &elem);
 
         let or_d_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
@@ -1309,8 +1234,8 @@ mod tests {
             "t:or_c(jtv:sha256({}),vc:pk_k({}))",
             sha256_hash, pks[0]
         ));
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &elem);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &elem);
 
         let or_c_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
@@ -1329,8 +1254,8 @@ mod tests {
             "or_i(jtv:sha256({}),c:pk_k({}))",
             sha256_hash, pks[0]
         ));
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &elem);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &elem);
 
         let or_i_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
@@ -1352,8 +1277,8 @@ mod tests {
             "thresh(3,c:pk_k({}),sc:pk_k({}),sc:pk_k({}),sc:pk_k({}),sc:pk_k({}))",
             pks[4], pks[3], pks[2], pks[1], pks[0],
         ));
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &elem);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &elem);
 
         let thresh_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
@@ -1382,8 +1307,8 @@ mod tests {
             "multi(3,{},{},{},{},{})",
             pks[4], pks[3], pks[2], pks[1], pks[0],
         ));
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &elem);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &elem);
 
         let multi_satisfied: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert_eq!(
@@ -1412,8 +1337,8 @@ mod tests {
             "multi(3,{},{},{},{},{})",
             pks[4], pks[3], pks[2], pks[1], pks[0],
         ));
-        let mut vfyfn = vfyfn_.clone(); // sigh rust 1.29...
-        let constraints = from_stack(&mut vfyfn, stack, &elem);
+        let vfyfn = vfyfn_.clone(); // sigh rust 1.29...
+        let constraints = from_stack(Box::new(vfyfn), stack, &elem);
 
         let multi_error: Result<Vec<SatisfiedConstraint>, Error> = constraints.collect();
         assert!(multi_error.is_err());

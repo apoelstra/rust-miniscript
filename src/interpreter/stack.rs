@@ -127,14 +127,11 @@ impl<'txin> Stack<'txin> {
     /// Unsat: For empty witness a 0 is pushed
     /// Err: All of other witness result in errors.
     /// `pk` CHECKSIG
-    pub(super) fn evaluate_pk<'intp, F>(
+    pub(super) fn evaluate_pk<'intp>(
         &mut self,
-        verify_sig: F,
+        verify_sig: &mut Box<dyn FnMut(&KeySigPair) -> bool + 'intp>,
         pk: &'intp BitcoinKey,
-    ) -> Option<Result<SatisfiedConstraint, Error>>
-    where
-        F: FnMut(&KeySigPair) -> bool,
-    {
+    ) -> Option<Result<SatisfiedConstraint, Error>> {
         if let Some(sigser) = self.pop() {
             match sigser {
                 Element::Dissatisfied => {
@@ -166,14 +163,11 @@ impl<'txin> Stack<'txin> {
     /// Unsat: For an empty witness
     /// Err: All of other witness result in errors.
     /// `DUP HASH160 <keyhash> EQUALVERIY CHECKSIG`
-    pub(super) fn evaluate_pkh<'intp, F>(
+    pub(super) fn evaluate_pkh<'intp>(
         &mut self,
-        verify_sig: F,
+        verify_sig: &mut Box<dyn FnMut(&KeySigPair) -> bool + 'intp>,
         pkh: &'intp TaggedHash160,
-    ) -> Option<Result<SatisfiedConstraint, Error>>
-    where
-        F: FnOnce(&KeySigPair) -> bool,
-    {
+    ) -> Option<Result<SatisfiedConstraint, Error>> {
         // Parse a bitcoin key from witness data slice depending on hash context
         // when we encounter a pkh(hash)
         // Depending on the tag of hash, we parse the as full key or x-only-key
@@ -371,14 +365,11 @@ impl<'txin> Stack<'txin> {
     /// other signatures are not checked against the first pubkey.
     /// `multi(2,pk1,pk2)` would be satisfied by `[0 sig2 sig1]` and Err on
     /// `[0 sig2 sig1]`
-    pub(super) fn evaluate_multi<'intp, F>(
+    pub(super) fn evaluate_multi<'intp>(
         &mut self,
-        verify_sig: F,
+        verify_sig: &mut Box<dyn FnMut(&KeySigPair) -> bool + 'intp>,
         pk: &'intp BitcoinKey,
-    ) -> Option<Result<SatisfiedConstraint, Error>>
-    where
-        F: FnOnce(&KeySigPair) -> bool,
-    {
+    ) -> Option<Result<SatisfiedConstraint, Error>> {
         if let Some(witness_sig) = self.pop() {
             if let Element::Push(sigser) = witness_sig {
                 let key_sig = verify_sersig(verify_sig, pk, sigser);

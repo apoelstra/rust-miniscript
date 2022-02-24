@@ -211,7 +211,7 @@ pub(super) fn from_txdata<'txin>(
                 // Key spend
                 // let sig =
                 // Tr inference to be done in future commit
-                todo!();
+                panic!("TODO");
             }
             Ok((
                 Inner::PublicKey(output_key.into(), PubkeyType::Tr),

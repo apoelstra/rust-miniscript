@@ -21,6 +21,8 @@
 
 use util::{script_is_v1_tr, witness_size};
 
+use interpreter::KeySigPair;
+
 use super::{sanity_check, Psbt};
 use super::{Error, InputError, PsbtInputSatisfier};
 use bitcoin::blockdata::witness::Witness;
@@ -298,18 +300,23 @@ pub fn interpreter_check<C: secp256k1::Verification>(
 
         let cltv = psbt.unsigned_tx.lock_time;
         let csv = psbt.unsigned_tx.input[index].sequence;
-        let amt = get_amt(psbt, index).map_err(|e| Error::InputError(e, index))?;
-
-        let interpreter =
-            interpreter::Interpreter::from_txdata(spk, &script_sig, &witness, cltv, csv)
-                .map_err(|e| Error::InputError(InputError::Interpreter(e), index))?;
-
+        let _amt = get_amt(psbt, index).map_err(|e| Error::InputError(e, index))?;
         // let vfyfn = interpreter
         //     .sighash_verify(&secp, &psbt.unsigned_tx, index, amt)
         //     .map_err(|e| Error::InputError(InputError::Interpreter(e), index))?;
         // Will change in later commmit
-        if let Some(error) = interpreter.iter(|_| true).filter_map(Result::err).next() {
-            return Err(Error::InputError(InputError::Interpreter(error), index));
+        {
+            let interpreter =
+                interpreter::Interpreter::from_txdata(spk, &script_sig, &witness, cltv, csv)
+                    .map_err(|e| Error::InputError(InputError::Interpreter(e), index))?;
+            let y = |_x: &KeySigPair| {
+                secp.ctx();
+                true
+            };
+            let iter = interpreter.iter(Box::new(y));
+            if let Some(error) = iter.filter_map(Result::err).next() {
+                return Err(Error::InputError(InputError::Interpreter(error), index));
+            };
         }
     }
     Ok(())
