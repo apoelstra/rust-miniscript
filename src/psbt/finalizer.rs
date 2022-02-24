@@ -304,10 +304,11 @@ pub fn interpreter_check<C: secp256k1::Verification>(
             interpreter::Interpreter::from_txdata(spk, &script_sig, &witness, cltv, csv)
                 .map_err(|e| Error::InputError(InputError::Interpreter(e), index))?;
 
-        let vfyfn = interpreter
-            .sighash_verify(&secp, &psbt.unsigned_tx, index, amt)
-            .map_err(|e| Error::InputError(InputError::Interpreter(e), index))?;
-        if let Some(error) = interpreter.iter(vfyfn).filter_map(Result::err).next() {
+        // let vfyfn = interpreter
+        //     .sighash_verify(&secp, &psbt.unsigned_tx, index, amt)
+        //     .map_err(|e| Error::InputError(InputError::Interpreter(e), index))?;
+        // Will change in later commmit
+        if let Some(error) = interpreter.iter(|_| true).filter_map(Result::err).next() {
             return Err(Error::InputError(InputError::Interpreter(error), index));
         }
     }

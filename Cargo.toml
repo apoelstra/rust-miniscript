@@ -33,8 +33,9 @@ name = "parse"
 [[example]]
 name = "sign_multisig"
 
-[[example]]
-name = "verify_tx"
+# TODO: Re-enable in future commit after API re-design
+# [[example]]
+# name = "verify_tx"
 
 [[example]]
 name = "psbt"

@@ -304,15 +304,16 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
         self.node.real_for_each_key(pred)
     }
 
-    fn real_translate_pk<FPk, FPkh, Q, FuncError>(
+    pub(crate) fn real_translate_pk<FPk, FPkh, Q, FuncError, CtxQ>(
         &self,
         translatefpk: &mut FPk,
         translatefpkh: &mut FPkh,
-    ) -> Result<Miniscript<Q, Ctx>, FuncError>
+    ) -> Result<Miniscript<Q, CtxQ>, FuncError>
     where
         FPk: FnMut(&Pk) -> Result<Q, FuncError>,
         FPkh: FnMut(&Pk::Hash) -> Result<Q::Hash, FuncError>,
         Q: MiniscriptKey,
+        CtxQ: ScriptContext,
     {
         let inner = self.node.real_translate_pk(translatefpk, translatefpkh)?;
         let ms = Miniscript {

@@ -125,17 +125,18 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Terminal<Pk, Ctx> {
             }
         }
     }
-    pub(super) fn real_translate_pk<FPk, FPkh, Q, Error>(
+    pub(super) fn real_translate_pk<FPk, FPkh, Q, Error, CtxQ>(
         &self,
         translatefpk: &mut FPk,
         translatefpkh: &mut FPkh,
-    ) -> Result<Terminal<Q, Ctx>, Error>
+    ) -> Result<Terminal<Q, CtxQ>, Error>
     where
         FPk: FnMut(&Pk) -> Result<Q, Error>,
         FPkh: FnMut(&Pk::Hash) -> Result<Q::Hash, Error>,
         Q: MiniscriptKey,
+        CtxQ: ScriptContext,
     {
-        let frag = match *self {
+        let frag: Terminal<Q, CtxQ> = match *self {
             Terminal::PkK(ref p) => Terminal::PkK(translatefpk(p)?),
             Terminal::PkH(ref p) => Terminal::PkH(translatefpkh(p)?),
             Terminal::After(n) => Terminal::After(n),
