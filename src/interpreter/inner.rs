@@ -376,7 +376,6 @@ pub(super) fn pre_taproot_to_no_checks<Ctx: ScriptContext>(
 }
 
 // Convert a miniscript from a specified context into an insane miniscript
-#[allow(dead_code)]
 pub(super) fn taproot_to_no_checks<Ctx: ScriptContext>(
     ms: &Miniscript<bitcoin::XOnlyPublicKey, Ctx>,
 ) -> Miniscript<BitcoinKey, NoChecks> {

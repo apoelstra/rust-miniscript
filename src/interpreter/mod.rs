@@ -25,8 +25,6 @@ use std::fmt;
 use std::str::FromStr;
 
 use bitcoin::hashes::{hash160, ripemd160, sha256, sha256d};
-// use bitcoin::util::sighash;
-#[allow(unused_imports)]
 use bitcoin::{self, secp256k1};
 use miniscript::context::NoChecks;
 use miniscript::ScriptContext;
@@ -63,6 +61,24 @@ pub enum KeySigPair {
     Ecdsa(bitcoin::PublicKey, bitcoin::EcdsaSig),
     /// A x-only key and corresponding Schnorr signature
     Schnorr(bitcoin::XOnlyPublicKey, bitcoin::SchnorrSig),
+}
+
+impl KeySigPair {
+    /// Obtain a pair of ([`bitcoin::PublicKey`], [`bitcoin::EcdsaSig`]) from [`KeySigPair`]
+    pub fn as_ecdsa(&self) -> Option<(bitcoin::PublicKey, bitcoin::EcdsaSig)> {
+        match self {
+            KeySigPair::Ecdsa(pk, sig) => Some((*pk, *sig)),
+            KeySigPair::Schnorr(_, _) => None,
+        }
+    }
+
+    /// Obtain a pair of ([`bitcoin::XOnlyPublicKey`], [`bitcoin::SchnorrSig`]) from [`KeySigPair`]
+    pub fn as_schnorr(&self) -> Option<(bitcoin::XOnlyPublicKey, bitcoin::SchnorrSig)> {
+        match self {
+            KeySigPair::Ecdsa(_, _) => None,
+            KeySigPair::Schnorr(pk, sig) => Some((*pk, *sig)),
+        }
+    }
 }
 
 // Internally used enum for different types of bitcoin keys
@@ -165,19 +181,10 @@ impl<'txin> Interpreter<'txin> {
         })
     }
 
-    /// Creates an iterator over the satisfied spending conditions
-    ///
-    /// Returns all satisfied constraints, even if they were redundant (i.e. did
-    /// not contribute to the script being satisfied). For example, if a signature
-    /// were provided for an `and_b(Pk,false)` fragment, that signature will be
-    /// returned, even though the entire and_b must have failed and must not have
-    /// been used.
-    ///
-    /// In case the script is actually dissatisfied, this may return several values
-    /// before ultimately returning an error.
+    /// Same as [`Interpreter::iter`], but allows for a custom verification function.
     /// See [Self::iter_assume_sigs] for a simpler API without information about Prevouts
     /// but skips the signature verification
-    pub fn iter<'iter>(
+    pub fn iter_custom<'iter>(
         &'iter self,
         verify_sig: Box<dyn FnMut(&KeySigPair) -> bool + 'iter>,
     ) -> Iter<'txin, 'iter> {
@@ -292,28 +299,38 @@ impl<'txin> Interpreter<'txin> {
         }
     }
 
-    /// Iterate over all satisfied constraints while checking signatures
+    /// Creates an iterator over the satisfied spending conditions
+    ///
+    /// Returns all satisfied constraints, even if they were redundant (i.e. did
+    /// not contribute to the script being satisfied). For example, if a signature
+    /// were provided for an `and_b(Pk,false)` fragment, that signature will be
+    /// returned, even though the entire and_b must have failed and must not have
+    /// been used.
+    ///
+    /// In case the script is actually dissatisfied, this may return several values
+    /// before ultimately returning an error.
+    ///
     /// Not all fields are used by legacy/segwitv0 descriptors; if you are sure this is a legacy
     /// spend (you can check with the `is_legacy\is_segwitv0` method) you can provide dummy data for
     /// the amount/prevouts.
     /// - For legacy outputs, no information about prevouts is required
     /// - For segwitv0 outputs, prevout at corresponding index with correct amount must be provided
     /// - For taproot outputs, information about all prevouts must be supplied
-    pub fn iter_check_sigs<'iter, C: secp256k1::Verification>(
+    pub fn iter<'iter, C: secp256k1::Verification>(
         &'iter self,
         secp: &'iter secp256k1::Secp256k1<C>,
         tx: &'txin bitcoin::Transaction,
         input_idx: usize,
         prevouts: &'iter sighash::Prevouts, // actually a 'prevouts, but 'prevouts: 'iter
     ) -> Iter<'txin, 'iter> {
-        self.iter(Box::new(move |sig| {
+        self.iter_custom(Box::new(move |sig| {
             self.verify_sig(secp, tx, input_idx, prevouts, sig)
         }))
     }
 
     /// Creates an iterator over the satisfied spending conditions without checking signatures
     pub fn iter_assume_sigs<'iter>(&'iter self) -> Iter<'txin, 'iter> {
-        self.iter(Box::new(|_| true))
+        self.iter_custom(Box::new(|_| true))
     }
 
     /// Outputs a "descriptor" string which reproduces the spent coins

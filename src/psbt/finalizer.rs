@@ -313,7 +313,7 @@ pub fn interpreter_check<C: secp256k1::Verification>(
                 secp.ctx();
                 true
             };
-            let iter = interpreter.iter(Box::new(y));
+            let iter = interpreter.iter_custom(Box::new(y));
             if let Some(error) = iter.filter_map(Result::err).next() {
                 return Err(Error::InputError(InputError::Interpreter(error), index));
             };
