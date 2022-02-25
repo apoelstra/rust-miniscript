@@ -21,7 +21,7 @@ use bitcoin::util::taproot::{ControlBlock, TAPROOT_ANNEX_PREFIX};
 use {BareCtx, Legacy, Segwitv0, Tap};
 
 use super::{stack, BitcoinKey, Error, Stack, TaggedHash160};
-use miniscript::context::{NoChecksEcdsa, ScriptContext};
+use miniscript::context::{NoChecks, ScriptContext};
 use {Miniscript, MiniscriptKey};
 
 /// Attempts to parse a slice as a Bitcoin public key, checking compressedness
@@ -95,7 +95,7 @@ pub(super) enum Inner {
     // that only appropriate outputs are created
     PublicKey(super::BitcoinKey, PubkeyType),
     /// The script being evaluated is an actual script
-    Script(Miniscript<super::BitcoinKey, NoChecksEcdsa>, ScriptType),
+    Script(Miniscript<super::BitcoinKey, NoChecks>, ScriptType),
 }
 
 // The `Script` returned by this method is always generated/cloned ... when
@@ -367,7 +367,7 @@ pub(super) fn from_txdata<'txin>(
 // we need to know whether to parse the public key provided in witness as x-only or full
 pub(super) fn pre_taproot_to_no_checks<Ctx: ScriptContext>(
     ms: &Miniscript<bitcoin::PublicKey, Ctx>,
-) -> Miniscript<BitcoinKey, NoChecksEcdsa> {
+) -> Miniscript<BitcoinKey, NoChecks> {
     // specify the () error type as this cannot error
     ms.real_translate_pk::<_, _, _, (), _>(&mut |pk| Ok(BitcoinKey::Fullkey(*pk)), &mut |pkh| {
         Ok(TaggedHash160::FullKey(*pkh))
@@ -379,7 +379,7 @@ pub(super) fn pre_taproot_to_no_checks<Ctx: ScriptContext>(
 #[allow(dead_code)]
 pub(super) fn taproot_to_no_checks<Ctx: ScriptContext>(
     ms: &Miniscript<bitcoin::XOnlyPublicKey, Ctx>,
-) -> Miniscript<BitcoinKey, NoChecksEcdsa> {
+) -> Miniscript<BitcoinKey, NoChecks> {
     // specify the () error type as this cannot error
     ms.real_translate_pk::<_, _, _, (), _>(
         &mut |xpk| Ok(BitcoinKey::XOnlyPublicKey(*xpk)),
@@ -734,7 +734,7 @@ mod tests {
         assert_eq!(script_code, Some(comp.pkh_spk.clone()));
     }
 
-    fn ms_inner_script(ms: &str) -> (Miniscript<BitcoinKey, NoChecksEcdsa>, bitcoin::Script) {
+    fn ms_inner_script(ms: &str) -> (Miniscript<BitcoinKey, NoChecks>, bitcoin::Script) {
         let ms = Miniscript::<bitcoin::PublicKey, Segwitv0>::from_str_insane(ms).unwrap();
         let spk = ms.encode();
         let miniscript = pre_taproot_to_no_checks(&ms);

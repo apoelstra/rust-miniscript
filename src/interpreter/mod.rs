@@ -28,7 +28,7 @@ use bitcoin::hashes::{hash160, ripemd160, sha256, sha256d};
 // use bitcoin::util::sighash;
 #[allow(unused_imports)]
 use bitcoin::{self, secp256k1};
-use miniscript::context::NoChecksEcdsa;
+use miniscript::context::NoChecks;
 use miniscript::ScriptContext;
 use Miniscript;
 use Terminal;
@@ -486,7 +486,7 @@ pub enum SatisfiedConstraint {
 ///depending on evaluation of the children.
 struct NodeEvaluationState<'intp> {
     ///The node which is being evaluated
-    node: &'intp Miniscript<BitcoinKey, NoChecksEcdsa>,
+    node: &'intp Miniscript<BitcoinKey, NoChecks>,
     ///number of children evaluated
     n_evaluated: usize,
     ///number of children satisfied
@@ -517,7 +517,7 @@ pub struct Iter<'intp, 'txin: 'intp> {
 ///Iterator for Iter
 impl<'intp, 'txin: 'intp> Iterator for Iter<'intp, 'txin>
 where
-    NoChecksEcdsa: ScriptContext,
+    NoChecks: ScriptContext,
 {
     type Item = Result<SatisfiedConstraint, Error>;
 
@@ -537,12 +537,12 @@ where
 
 impl<'intp, 'txin: 'intp> Iter<'intp, 'txin>
 where
-    NoChecksEcdsa: ScriptContext,
+    NoChecks: ScriptContext,
 {
     /// Helper function to push a NodeEvaluationState on state stack
     fn push_evaluation_state(
         &mut self,
-        node: &'intp Miniscript<BitcoinKey, NoChecksEcdsa>,
+        node: &'intp Miniscript<BitcoinKey, NoChecks>,
         n_evaluated: usize,
         n_satisfied: usize,
     ) -> () {
@@ -973,7 +973,7 @@ mod tests {
     use bitcoin;
     use bitcoin::hashes::{hash160, ripemd160, sha256, sha256d, Hash};
     use bitcoin::secp256k1::{self, Secp256k1, VerifyOnly};
-    use miniscript::context::NoChecksEcdsa;
+    use miniscript::context::NoChecks;
     use Miniscript;
     use MiniscriptKey;
     use ToPublicKey;
@@ -1034,7 +1034,7 @@ mod tests {
         fn from_stack<'txin, 'elem>(
             verify_fn: Box<dyn FnMut(&KeySigPair) -> bool + 'elem>,
             stack: Stack<'txin>,
-            ms: &'elem Miniscript<BitcoinKey, NoChecksEcdsa>,
+            ms: &'elem Miniscript<BitcoinKey, NoChecks>,
         ) -> Iter<'elem, 'txin> {
             Iter {
                 verify_sig: verify_fn,
@@ -1438,8 +1438,8 @@ mod tests {
 
     // By design there is no support for parse a miniscript with BitcoinKey
     // because it does not implement FromStr
-    fn no_checks_ms(ms: &str) -> Miniscript<BitcoinKey, NoChecksEcdsa> {
-        let elem: Miniscript<bitcoin::PublicKey, NoChecksEcdsa> =
+    fn no_checks_ms(ms: &str) -> Miniscript<BitcoinKey, NoChecks> {
+        let elem: Miniscript<bitcoin::PublicKey, NoChecks> =
             Miniscript::from_str_insane(ms).unwrap();
         inner::pre_taproot_to_no_checks(&elem)
     }
