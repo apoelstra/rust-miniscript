@@ -83,7 +83,6 @@ pub enum ScriptType {
     Sh,
     Wsh,
     ShWsh,
-    #[allow(dead_code)]
     Tr, // Script Spend
 }
 
@@ -234,17 +233,23 @@ pub(super) fn from_txdata<'txin>(
                     let ms = taproot_to_no_checks(&tap_script);
                     // Creating new contexts is cheap
                     let secp = bitcoin::secp256k1::Secp256k1::verification_only();
+                    let tap_script = tap_script.encode();
                     // Should not really need to call dangerous assumed tweaked here.
                     // Should be fixed after RC
                     if ctrl_blk.verify_taproot_commitment(
                         &secp,
                         &output_key.dangerous_assume_tweaked(),
-                        &tap_script.encode(),
+                        &tap_script,
                     ) {
                         Ok((
                             Inner::Script(ms, ScriptType::Tr),
                             wit_stack,
-                            None, // Tr script code None
+                            // Tr script spend code is stored in script spend. This is an internal hack to store the
+                            // encoded script instead yet another tagged enum for saving tap_script
+                            // We can recompute the script again by translating from nochecks to tap and re-encoding it
+                            // Having this hack seems simple because this is not exposed publicly and the internal code is
+                            // easy to audit
+                            Some(tap_script),
                         ))
                     } else {
                         return Err(Error::ControlBlockVerificationError);

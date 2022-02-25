@@ -20,7 +20,7 @@
 //!
 
 use bitcoin::blockdata::witness::Witness;
-use bitcoin::util::sighash;
+use bitcoin::util::{sighash, taproot};
 use std::fmt;
 use std::str::FromStr;
 
@@ -206,6 +206,92 @@ impl<'txin> Interpreter<'txin> {
         }
     }
 
+    /// Verify a signature for a given transaction and prevout information
+    /// This is a low level API, [`Interpreter::iter`] or [`Interpreter::iter_assume_sig`]
+    /// should satisfy most use-cases.
+    /// Returns false if
+    /// - the signature verification fails
+    /// - the input index is out of range
+    /// - Insufficient sighash information is present
+    /// - sighash single without corresponding output
+    // TODO: Create a good first isse to change this to error
+    pub fn verify_sig<C: secp256k1::Verification>(
+        &self,
+        secp: &secp256k1::Secp256k1<C>,
+        tx: &bitcoin::Transaction,
+        input_idx: usize,
+        prevouts: &sighash::Prevouts,
+        sig: &KeySigPair,
+    ) -> bool {
+        fn get_prevout<'u>(
+            prevouts: &sighash::Prevouts<'u>,
+            input_index: usize,
+        ) -> Option<&'u bitcoin::TxOut> {
+            match prevouts {
+                sighash::Prevouts::One(index, prevout) => {
+                    if input_index == *index {
+                        Some(prevout)
+                    } else {
+                        None
+                    }
+                }
+                sighash::Prevouts::All(prevouts) => prevouts.get(input_index),
+            }
+        }
+        let mut cache = bitcoin::util::sighash::SigHashCache::new(tx);
+        match sig {
+            KeySigPair::Ecdsa(key, ecdsa_sig) => {
+                let script_pubkey = self.script_code.as_ref().expect("Legacy have script code");
+                let sighash = if self.is_legacy() {
+                    let sighash_u32 = ecdsa_sig.hash_ty.as_u32();
+                    cache.legacy_signature_hash(input_idx, &script_pubkey, sighash_u32)
+                } else if self.is_segwit_v0() {
+                    let amt = match get_prevout(prevouts, input_idx) {
+                        Some(txout) => txout.value,
+                        None => return false,
+                    };
+                    cache.segwit_signature_hash(input_idx, &script_pubkey, amt, ecdsa_sig.hash_ty)
+                } else {
+                    // taproot(or future) signatures in segwitv0 context
+                    return false;
+                };
+                let msg =
+                    sighash.map(|hash| secp256k1::Message::from_slice(&hash).expect("32 byte"));
+                let success =
+                    msg.map(|msg| secp.verify_ecdsa(&msg, &ecdsa_sig.sig, &key.inner).is_ok());
+                success.unwrap_or(false) // unwrap_or checks for errors, while success would have checksig results
+            }
+            KeySigPair::Schnorr(xpk, schnorr_sig) => {
+                let sighash_msg = if self.is_taproot_v1_key_spend() {
+                    cache.taproot_key_spend_signature_hash(input_idx, prevouts, schnorr_sig.hash_ty)
+                } else if self.is_taproot_v1_script_spend() {
+                    let tap_script = self.script_code.as_ref().expect(
+                        "Internal Hack: Saving leaf script instead\
+                        of script code for script spend",
+                    );
+                    let leaf_hash = taproot::TapLeafHash::from_script(
+                        &tap_script,
+                        taproot::LeafVersion::TapScript,
+                    );
+                    cache.taproot_script_spend_signature_hash(
+                        input_idx,
+                        prevouts,
+                        leaf_hash,
+                        schnorr_sig.hash_ty,
+                    )
+                } else {
+                    // schnorr sigs in ecdsa descriptors
+                    return false;
+                };
+                let msg =
+                    sighash_msg.map(|hash| secp256k1::Message::from_slice(&hash).expect("32 byte"));
+                let success =
+                    msg.map(|msg| secp.verify_schnorr(&schnorr_sig.sig, &msg, &xpk).is_ok());
+                success.unwrap_or(false) // unwrap_or_default checks for errors, while success would have checksig results
+            }
+        }
+    }
+
     /// Iterate over all satisfied constraints while checking signatures
     /// Not all fields are used by legacy/segwitv0 descriptors; if you are sure this is a legacy
     /// spend (you can check with the `is_legacy\is_segwitv0` method) you can provide dummy data for
@@ -216,22 +302,12 @@ impl<'txin> Interpreter<'txin> {
     pub fn iter_check_sigs<'iter, C: secp256k1::Verification>(
         &'iter self,
         secp: &'iter secp256k1::Secp256k1<C>,
-        tx: &'iter bitcoin::Transaction, // actually a 'txin, but 'txin : 'iter
+        tx: &'txin bitcoin::Transaction,
         input_idx: usize,
         prevouts: &'iter sighash::Prevouts, // actually a 'prevouts, but 'prevouts: 'iter
     ) -> Iter<'txin, 'iter> {
-        fn verify_sig<C: secp256k1::Verification>(
-            _secp: &secp256k1::Secp256k1<C>,
-            _tx: &bitcoin::Transaction,
-            _input_idx: usize,
-            _prevouts: &sighash::Prevouts,
-            _sig: &KeySigPair,
-        ) -> bool {
-            panic!("TODO");
-        }
-        let _warn_error = &self.script_code;
         self.iter(Box::new(move |sig| {
-            verify_sig(secp, tx, input_idx, prevouts, sig)
+            self.verify_sig(secp, tx, input_idx, prevouts, sig)
         }))
     }
 
@@ -310,14 +386,30 @@ impl<'txin> Interpreter<'txin> {
         }
     }
 
-    /// Whether this is a taproot spend
-    pub fn is_taproot_v1(&self) -> bool {
+    /// Whether this is a taproot key spend
+    pub fn is_taproot_v1_key_spend(&self) -> bool {
         match self.inner {
             inner::Inner::PublicKey(_, inner::PubkeyType::Pk) => false,
             inner::Inner::PublicKey(_, inner::PubkeyType::Pkh) => false,
             inner::Inner::PublicKey(_, inner::PubkeyType::Wpkh) => false,
             inner::Inner::PublicKey(_, inner::PubkeyType::ShWpkh) => false,
             inner::Inner::PublicKey(_, inner::PubkeyType::Tr) => true,
+            inner::Inner::Script(_, inner::ScriptType::Bare) => false,
+            inner::Inner::Script(_, inner::ScriptType::Sh) => false,
+            inner::Inner::Script(_, inner::ScriptType::Wsh) => false,
+            inner::Inner::Script(_, inner::ScriptType::ShWsh) => false,
+            inner::Inner::Script(_, inner::ScriptType::Tr) => false,
+        }
+    }
+
+    /// Whether this is a taproot script spend
+    pub fn is_taproot_v1_script_spend(&self) -> bool {
+        match self.inner {
+            inner::Inner::PublicKey(_, inner::PubkeyType::Pk) => false,
+            inner::Inner::PublicKey(_, inner::PubkeyType::Pkh) => false,
+            inner::Inner::PublicKey(_, inner::PubkeyType::Wpkh) => false,
+            inner::Inner::PublicKey(_, inner::PubkeyType::ShWpkh) => false,
+            inner::Inner::PublicKey(_, inner::PubkeyType::Tr) => false,
             inner::Inner::Script(_, inner::ScriptType::Bare) => false,
             inner::Inner::Script(_, inner::ScriptType::Sh) => false,
             inner::Inner::Script(_, inner::ScriptType::Wsh) => false,
