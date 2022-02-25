@@ -13,6 +13,7 @@
 //
 
 use bitcoin::hashes::{hash160, hex::ToHex};
+use bitcoin::util::taproot;
 use bitcoin::{self, secp256k1};
 use std::{error, fmt};
 
@@ -28,6 +29,10 @@ pub enum Error {
     /// Inferring script spends is possible, but is hidden nodes are currently
     /// not supported in descriptor spec
     CannotInferTrDescriptors,
+    /// Error parsing taproot control block
+    ControlBlockParse(taproot::TaprootError),
+    /// Tap control block(merkle proofs + tweak) verification error
+    ControlBlockVerificationError,
     /// General Interpreter error.
     CouldNotEvaluate,
     /// EcdsaSig related error
@@ -92,6 +97,8 @@ pub enum Error {
     SchnorrSig(bitcoin::SchnorrSigError),
     /// Errors in signature hash calculations
     SighashError(bitcoin::util::sighash::Error),
+    /// Taproot Annex Unsupported
+    TapAnnexUnsupported,
     /// An uncompressed public key was encountered in a context where it is
     /// disallowed (e.g. in a Segwit script or p2wpkh output)
     UncompressedPubkey,
@@ -190,6 +197,10 @@ impl fmt::Display for Error {
                 n
             ),
             Error::CannotInferTrDescriptors => write!(f, "Cannot infer taproot descriptors"),
+            Error::ControlBlockParse(ref e) => write!(f, "Control block parse error {}", e),
+            Error::ControlBlockVerificationError => {
+                f.write_str("Control block verification failed")
+            }
             Error::EcdsaSig(ref s) => write!(f, "Ecdsa sig error: {}", s),
             Error::ExpectedPush => f.write_str("expected push in script"),
             Error::CouldNotEvaluate => f.write_str("Interpreter Error: Could not evaluate"),
@@ -235,6 +246,7 @@ impl fmt::Display for Error {
             Error::Secp(ref e) => fmt::Display::fmt(e, f),
             Error::SchnorrSig(ref s) => write!(f, "Schnorr sig error: {}", s),
             Error::SighashError(ref e) => fmt::Display::fmt(e, f),
+            Error::TapAnnexUnsupported => f.write_str("Encounter Annex element"),
             Error::UncompressedPubkey => {
                 f.write_str("uncompressed pubkey in non-legacy descriptor")
             }

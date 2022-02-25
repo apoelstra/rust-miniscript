@@ -15,8 +15,10 @@
 use bitcoin;
 use bitcoin::blockdata::witness::Witness;
 use bitcoin::hashes::{hash160, sha256, Hash};
+use bitcoin::schnorr::TapTweak;
+use bitcoin::util::taproot::{ControlBlock, TAPROOT_ANNEX_PREFIX};
 
-use {BareCtx, Legacy, Segwitv0};
+use {BareCtx, Legacy, Segwitv0, Tap};
 
 use super::{stack, BitcoinKey, Error, Stack, TaggedHash160};
 use miniscript::context::{NoChecksEcdsa, ScriptContext};
@@ -209,15 +211,48 @@ pub(super) fn from_txdata<'txin>(
                 .map_err(|_| Error::XOnlyPublicKeyParseError)?;
             if wit_stack.len() == 1 {
                 // Key spend
-                // let sig =
-                // Tr inference to be done in future commit
-                panic!("TODO");
+                Ok((
+                    Inner::PublicKey(output_key.into(), PubkeyType::Tr),
+                    wit_stack,
+                    None, // Tr script code None
+                ))
+            } else {
+                // wit_stack.len() >=2
+                // Check for annex
+                let ctrl_blk = wit_stack.pop().ok_or(Error::UnexpectedStackEnd)?;
+                let ctrl_blk = ctrl_blk.as_push()?;
+                let tap_script = wit_stack.pop().ok_or(Error::UnexpectedStackEnd)?;
+                if ctrl_blk.len() > 0 && ctrl_blk[0] == TAPROOT_ANNEX_PREFIX {
+                    // Annex is non-standard, bitcoin consensus rules ignore it.
+                    // Our sighash structure and signature verification
+                    // does not support annex, return error
+                    return Err(Error::TapAnnexUnsupported);
+                } else if wit_stack.len() >= 2 {
+                    let ctrl_blk = ControlBlock::from_slice(ctrl_blk)
+                        .map_err(|e| Error::ControlBlockParse(e))?;
+                    let tap_script = script_from_stackelem::<Tap>(&tap_script)?;
+                    let ms = taproot_to_no_checks(&tap_script);
+                    // Creating new contexts is cheap
+                    let secp = bitcoin::secp256k1::Secp256k1::verification_only();
+                    // Should not really need to call dangerous assumed tweaked here.
+                    // Should be fixed after RC
+                    if ctrl_blk.verify_taproot_commitment(
+                        &secp,
+                        &output_key.dangerous_assume_tweaked(),
+                        &tap_script.encode(),
+                    ) {
+                        Ok((
+                            Inner::Script(ms, ScriptType::Tr),
+                            wit_stack,
+                            None, // Tr script code None
+                        ))
+                    } else {
+                        return Err(Error::ControlBlockVerificationError);
+                    }
+                } else {
+                    return Err(Error::UnexpectedStackBoolean);
+                }
             }
-            Ok((
-                Inner::PublicKey(output_key.into(), PubkeyType::Tr),
-                ssig_stack,
-                None, // Tr script code None
-            ))
         }
     // ** pay to scripthash **
     } else if spk.is_p2sh() {
