@@ -60,7 +60,7 @@ fn setup_keys(
 
         let sk = secp256k1::SecretKey::from_slice(&sk[..]).expect("secret key");
         let pk = miniscript::bitcoin::PublicKey {
-            key: secp256k1::PublicKey::from_secret_key(&secp_sign, &sk),
+            inner: secp256k1::PublicKey::from_secret_key(&secp_sign, &sk),
             compressed: true,
         };
         pks.push(pk);

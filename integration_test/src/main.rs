@@ -207,7 +207,7 @@ fn main() {
         for sk in sks_reqd {
             let sig = secp.sign_ecdsa(&msg, &sk);
             let pk = pks[sks.iter().position(|&x| x == sk).unwrap()];
-            psbts[i].inputs[0].partial_sigs.insert(pk, bitcoin::EcdsaSig { sig, hash_ty: sighash_ty });
+            psbts[i].inputs[0].partial_sigs.insert(pk.inner, bitcoin::EcdsaSig { sig, hash_ty: sighash_ty });
         }
         // Add the hash preimages to the psbt
         psbts[i].inputs[0].sha256_preimages.insert(
