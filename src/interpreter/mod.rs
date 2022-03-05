@@ -46,7 +46,9 @@ use self::stack::Stack;
 pub struct Interpreter<'txin> {
     inner: inner::Inner,
     stack: Stack<'txin>,
-    script_code: Option<bitcoin::Script>, // taproot transactions don't have script code
+    /// For non-Taproot spends, the scriptCode; for Taproot script-spends, this
+    /// is the leaf script; for key-spends it is `None`.
+    script_code: Option<bitcoin::Script>,
     age: u32,
     height: u32,
 }

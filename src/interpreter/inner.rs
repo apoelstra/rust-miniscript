@@ -244,11 +244,12 @@ pub(super) fn from_txdata<'txin>(
                         Ok((
                             Inner::Script(ms, ScriptType::Tr),
                             wit_stack,
-                            // Tr script spend code is stored in script spend. This is an internal hack to store the
-                            // encoded script instead yet another tagged enum for saving tap_script
-                            // We can recompute the script again by translating from nochecks to tap and re-encoding it
-                            // Having this hack seems simple because this is not exposed publicly and the internal code is
-                            // easy to audit
+                            // Tapscript is returned as a "scriptcode". This is a hack, but avoids adding yet
+                            // another enum just for taproot, and this function is not a publicly exposed API,
+                            // so it's easy enough to keep track of all uses.
+                            //
+                            // In particular, this return value will be put into the `script_code` member of
+                            // the `Interpreter` script; the iterpreter logic does the right thing with it.
                             Some(tap_script),
                         ))
                     } else {
