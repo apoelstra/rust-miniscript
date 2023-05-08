@@ -668,6 +668,12 @@ impl<Pk: MiniscriptKey> ForEachKey<Pk> for Policy<Pk> {
     where
         Pk: 'a,
     {
+        self.real_for_each_key(&mut pred)
+    }
+}
+
+impl<Pk: MiniscriptKey> Policy<Pk> {
+    fn real_for_each_key<'a, F: FnMut(&'a Pk) -> bool>(&'a self, pred: &mut F) -> bool {
         match *self {
             Policy::Unsatisfiable | Policy::Trivial => true,
             Policy::Key(ref pk) => pred(pk),
@@ -678,14 +684,12 @@ impl<Pk: MiniscriptKey> ForEachKey<Pk> for Policy<Pk> {
             | Policy::After(..)
             | Policy::Older(..) => true,
             Policy::Threshold(_, ref subs) | Policy::And(ref subs) => {
-                subs.iter().all(|sub| sub.for_each_key(&mut pred))
+                subs.iter().all(|sub| sub.real_for_each_key(&mut *pred))
             }
-            Policy::Or(ref subs) => subs.iter().all(|(_, sub)| sub.for_each_key(&mut pred)),
+            Policy::Or(ref subs) => subs.iter().all(|(_, sub)| sub.real_for_each_key(&mut *pred)),
         }
     }
-}
 
-impl<Pk: MiniscriptKey> Policy<Pk> {
     /// Convert a policy using one kind of public key to another
     /// type of public key
     ///
@@ -1293,7 +1297,7 @@ fn generate_combination<Pk: MiniscriptKey>(
 }
 
 #[cfg(all(test, feature = "compiler"))]
-mod tests {
+mod compiler_tests {
     use core::str::FromStr;
 
     use sync::Arc;
@@ -1352,5 +1356,20 @@ mod tests {
             .map(|sub_pol| (0.25, Arc::new(PolicyArc::Threshold(2, sub_pol))))
             .collect::<Vec<_>>();
         assert_eq!(combinations, expected_comb);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::str::FromStr;
+
+    #[test]
+    fn for_each_key() {
+        let liquid_pol = Policy::<String>::from_str(
+            "or(and(older(4096),thresh(2,pk(A),pk(B),pk(C))),thresh(11,pk(F1),pk(F2),pk(F3),pk(F4),pk(F5),pk(F6),pk(F7),pk(F8),pk(F9),pk(F10),pk(F11),pk(F12),pk(F13),pk(F14)))").unwrap();
+        let mut count = 0;
+        assert!(liquid_pol.for_each_key(|_| { count +=1; true }));
+        assert_eq!(count, 17);
     }
 }
