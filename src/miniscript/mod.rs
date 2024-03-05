@@ -21,6 +21,7 @@ use bitcoin::taproot::{LeafVersion, TapLeafHash};
 
 use self::analyzable::ExtParams;
 pub use self::context::{BareCtx, Legacy, Segwitv0, Tap};
+use crate::error::{BoxableError, BoxedError, ResultExt as _, WithSpan};
 use crate::iter::TreeLike;
 use crate::prelude::*;
 use crate::{script_num_size, TranslateErr};
@@ -29,6 +30,7 @@ pub mod analyzable;
 pub mod astelem;
 pub(crate) mod context;
 pub mod decode;
+mod error;
 pub mod iter;
 pub mod lex;
 pub mod limits;
@@ -39,6 +41,7 @@ use core::cmp;
 
 use sync::Arc;
 
+pub use self::error::ParseError;
 use self::lex::{lex, TokenIter};
 pub use crate::miniscript::context::ScriptContext;
 use crate::miniscript::decode::Terminal;
@@ -649,6 +652,32 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
             Ok(ms)
         }
     }
+
+    /// Hacked in function to speed test miniscript parsing
+    pub fn from_str_ext2(
+        s: &str,
+        ext: &ExtParams,
+    ) -> Result<Miniscript<Pk, Ctx>, WithSpan<ParseError>> {
+        // This checks for invalid ASCII chars
+        let top = expression::tree::Tree::from_str(s).unwrap();
+        if let Some(root) = top.root() {
+            let ms: Arc<Miniscript<Pk, Ctx>> = Self::from_tree2(&top)?;
+            ms.ext_check(ext)
+                .map_err(ParseError::Analysis)
+                .with_span(root.span())?;
+
+            if ms.ty.corr.base != types::Base::B {
+                Err(ParseError::non_top_level(ms.ty.corr.base)).with_span(root.span())
+            } else {
+                // Can unwrap because this `Arc` was produced by `from_tree2` which
+                // returns only this single non-self-referential `Arc` and does not
+                // store any other references anywhere else.
+                Ok(Arc::try_unwrap(ms).unwrap())
+            }
+        } else {
+            Err(ParseError::EmptyString).with_index(0)
+        }
+    }
 }
 
 impl<Pk: FromStrKey, Ctx: ScriptContext> crate::expression::FromTree for Arc<Miniscript<Pk, Ctx>> {
@@ -663,6 +692,189 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> crate::expression::FromTree for Miniscr
     fn from_tree(top: &expression::Tree) -> Result<Miniscript<Pk, Ctx>, Error> {
         let inner: Terminal<Pk, Ctx> = expression::FromTree::from_tree(top)?;
         Miniscript::from_ast(inner)
+    }
+}
+
+impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
+    /// Alternate impl of fromtree
+    fn from_tree2(
+        top: &expression::tree::Tree,
+    ) -> Result<Arc<Miniscript<Pk, Ctx>>, WithSpan<ParseError>> {
+        use crate::{AbsLockTime, RelLockTime};
+
+        struct StackElem<'tree, Pk: MiniscriptKey, Ctx: ScriptContext> {
+            unconverted: &'tree expression::tree::Node<&'tree str>,
+            converted: Option<Arc<Miniscript<Pk, Ctx>>>,
+        }
+
+        impl<'tree, Pk: FromStrKey, Ctx: ScriptContext> StackElem<'tree, Pk, Ctx> {
+            fn to_frag(&self) -> Result<Arc<Miniscript<Pk, Ctx>>, WithSpan<ParseError>> {
+                self.converted
+                    .as_ref()
+                    .map(Arc::clone)
+                    .ok_or_else(|| {
+                        ParseError::invalid_fragment(&self.unconverted, "a Miniscript fragment")
+                    })
+                    .with_span(self.unconverted.span())
+            }
+
+            fn to_str<T, F>(&self, err_convert: F) -> Result<T, WithSpan<ParseError>>
+            where
+                T: core::str::FromStr,
+                <T as core::str::FromStr>::Err: BoxableError,
+                F: FnOnce(expression::LeafError<BoxedError>) -> ParseError,
+            {
+                self.unconverted.parse_from_str().map_err(|e_with_span| {
+                    e_with_span.map(|e| {
+                        err_convert(match e {
+                            expression::LeafError::NotLeaf(e) => expression::LeafError::NotLeaf(e),
+                            expression::LeafError::Parse(e) => {
+                                expression::LeafError::Parse(BoxableError::box_err(e))
+                            }
+                        })
+                    })
+                })
+            }
+
+            fn to_u32(&self) -> Result<u32, WithSpan<ParseError>> {
+                self.unconverted
+                    .parse_num()
+                    .map_err(|e| e.map(ParseError::FromStrNum))
+            }
+        }
+
+        let mut converted = Vec::<StackElem<Pk, Ctx>>::with_capacity(top.len());
+
+        for next in top.pre_order_iter().rev() {
+            let n_conv = converted.len();
+            let n_children = next.n_children();
+            let (frag_name, frag_wrap) =
+                //split_expression_name(next.data()).map_err(|_| "failed to split name")?;
+                split_expression_name(next.data()).map_err(|_| "failed to split name").unwrap();
+
+            // Next, we try parsing the n-ary fragments, since they require custom
+            // logic to deal with the variable number of children.
+            let unwrapped = if frag_name == "thresh" {
+                // The `n_conv - i - 2` is explained as: one -1 is because we are
+                // reverse-indexing the array, which is done as n-i-1, and the
+                // other -1 is because we call `converted.pop` two lines above.
+                let thresh = next
+                    .to_null_threshold(converted.pop().map(|cv| cv.unconverted))
+                    .map_err(|e| e.map(ParseError::ParseThreshold))?
+                    .translate_by_index(|i| converted[n_conv - i - 2].to_frag())?;
+                converted.truncate(n_conv - thresh.n());
+                Some(Terminal::Thresh(thresh))
+            } else if frag_name == "multi" {
+                let thresh = next
+                    .to_null_threshold(converted.pop().map(|cv| cv.unconverted))
+                    .map_err(|e| e.map(ParseError::ParseThreshold))?
+                    .translate_by_index(|i| {
+                        converted[n_conv - i - 2].to_str(ParseError::FromStrPk)
+                    })?;
+                converted.truncate(n_conv - thresh.n());
+                Some(Terminal::Multi(thresh))
+            } else if frag_name == "multi_a" {
+                let thresh = next
+                    .to_null_threshold(converted.pop().map(|cv| cv.unconverted))
+                    .map_err(|e| e.map(ParseError::ParseThreshold))?
+                    .translate_by_index(|i| {
+                        converted[n_conv - i - 2].to_str(ParseError::FromStrPk)
+                    })?;
+                converted.truncate(n_conv - thresh.n());
+                Some(Terminal::MultiA(thresh))
+            } else {
+                // Finally, we parse the fragments with known numbers of children.
+                match n_children {
+                    0 => match frag_name {
+                        "0" => Some(Terminal::False),
+                        "1" => Some(Terminal::True),
+                        _ => None,
+                    },
+                    1 => {
+                        let lchild = converted.pop().unwrap();
+                        match frag_name {
+                            "expr_raw_pkh" => Some(Terminal::RawPkH(
+                                lchild.unconverted.parse_from_str().map_err(|e_with_span| {
+                                    e_with_span.map(ParseError::FromStrRawHash160)
+                                })?,
+                            )),
+                            "pk_k" => Some(Terminal::PkK(lchild.to_str(ParseError::FromStrPk)?)),
+                            "pk_h" => Some(Terminal::PkH(lchild.to_str(ParseError::FromStrPk)?)),
+                            "after" => Some(Terminal::After(
+                                AbsLockTime::from_consensus(lchild.to_u32()?)
+                                    .map_err(ParseError::AbsLockTime)
+                                    .with_span(next.span())?,
+                            )),
+                            "older" => Some(Terminal::Older(
+                                RelLockTime::from_consensus(lchild.to_u32()?)
+                                    .map_err(ParseError::RelLockTime)
+                                    .with_span(next.span())?,
+                            )),
+                            "sha256" => {
+                                Some(Terminal::Sha256(lchild.to_str(ParseError::FromStrSha256)?))
+                            }
+                            "hash256" => {
+                                Some(Terminal::Hash256(lchild.to_str(ParseError::FromStrHash256)?))
+                            }
+                            "ripemd160" => Some(Terminal::Ripemd160(
+                                lchild.to_str(ParseError::FromStrRipemd160)?,
+                            )),
+                            "hash160" => {
+                                Some(Terminal::Hash160(lchild.to_str(ParseError::FromStrHash160)?))
+                            }
+                            _ => None,
+                        }
+                    }
+                    2 => {
+                        let lchild = converted.pop().unwrap();
+                        let rchild = converted.pop().unwrap();
+                        match frag_name {
+                            "and_v" => Some(Terminal::AndV(lchild.to_frag()?, rchild.to_frag()?)),
+                            "and_b" => Some(Terminal::AndB(lchild.to_frag()?, rchild.to_frag()?)),
+                            "and_n" => Some(Terminal::AndOr(
+                                lchild.to_frag()?,
+                                rchild.to_frag()?,
+                                Arc::new(Miniscript::FALSE),
+                            )),
+                            "or_b" => Some(Terminal::OrB(lchild.to_frag()?, rchild.to_frag()?)),
+                            "or_d" => Some(Terminal::OrD(lchild.to_frag()?, rchild.to_frag()?)),
+                            "or_c" => Some(Terminal::OrC(lchild.to_frag()?, rchild.to_frag()?)),
+                            "or_i" => Some(Terminal::OrI(lchild.to_frag()?, rchild.to_frag()?)),
+                            _ => None,
+                        }
+                    }
+                    3 => {
+                        let lchild = converted.pop().unwrap();
+                        let mchild = converted.pop().unwrap();
+                        let rchild = converted.pop().unwrap();
+                        match frag_name {
+                            "andor" => Some(Terminal::AndOr(
+                                lchild.to_frag()?,
+                                mchild.to_frag()?,
+                                rchild.to_frag()?,
+                            )),
+                            _ => None,
+                        }
+                    }
+                    _ => None,
+                }
+            };
+
+            if let Some(unwrapped) = unwrapped {
+                let ms = wrap_into_miniscript(unwrapped, frag_wrap).unwrap(); //.map_err(|_| "parsing wrappers")?;
+                converted.push(StackElem { unconverted: next, converted: Some(Arc::new(ms)) });
+            } else if n_children == 0 {
+                // Specifically for leaf nodes, if we are unable to parse them
+                // as a Miniscript fragment, we assume that they are a pubkey,
+                // hash or number, and simply record it as "unconverted".
+                converted.push(StackElem { unconverted: next, converted: None });
+            } else {
+                return Err(ParseError::invalid_fragment(next, "a Miniscript fragment"))
+                    .with_span(next.span());
+            }
+        }
+        debug_assert_eq!(converted.len(), 1); // when we parsed the expression tree this should have been assured
+        converted.pop().expect("just checked above").to_frag()
     }
 }
 
@@ -946,6 +1158,13 @@ mod tests {
         };
 
         script_rtt(pkh_ms, "76a914111111111111111111111111111111111111111188ac");
+    }
+
+    #[test]
+    fn basic_invalid_strings() {
+        Segwitv0Script::from_str("").unwrap_err();
+        Segwitv0Script::from_str_ext("", &ExtParams::insane()).unwrap_err();
+        Segwitv0Script::from_str_ext2("", &ExtParams::insane()).unwrap_err();
     }
 
     #[test]
@@ -1469,6 +1688,28 @@ mod benches {
     pub fn parse_segwit0_deep(bh: &mut Bencher) {
         bh.iter(|| {
             let tree = Miniscript::<String, context::Segwitv0>::from_str_ext(
+                "and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:pk(1),pk(2)),pk(3)),pk(4)),pk(5)),pk(6)),pk(7)),pk(8)),pk(9)),pk(10)),pk(11)),pk(12)),pk(13)),pk(14)),pk(15)),pk(16)),pk(17)),pk(18)),pk(19)),pk(20)),pk(21))",
+                &ExtParams::sane(),
+            ).unwrap();
+            black_box(tree);
+        });
+    }
+
+    #[bench]
+    pub fn parse_segwit02(bh: &mut Bencher) {
+        bh.iter(|| {
+            let tree = Miniscript::<String, context::Segwitv0>::from_str_ext2(
+                "and_v(v:pk(E),thresh(2,j:and_v(v:sha256(H),t:or_i(v:sha256(H),v:pkh(A))),s:pk(B),s:pk(C),s:pk(D),sjtv:sha256(H)))",
+                &ExtParams::sane(),
+            ).unwrap();
+            black_box(tree);
+        });
+    }
+
+    #[bench]
+    pub fn parse_segwit0_deep2(bh: &mut Bencher) {
+        bh.iter(|| {
+            let tree = Miniscript::<String, context::Segwitv0>::from_str_ext2(
                 "and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:and_v(v:pk(1),pk(2)),pk(3)),pk(4)),pk(5)),pk(6)),pk(7)),pk(8)),pk(9)),pk(10)),pk(11)),pk(12)),pk(13)),pk(14)),pk(15)),pk(16)),pk(17)),pk(18)),pk(19)),pk(20)),pk(21))",
                 &ExtParams::sane(),
             ).unwrap();
