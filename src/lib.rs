@@ -120,6 +120,7 @@ mod pub_macros;
 
 mod blanket_traits;
 pub mod descriptor;
+mod error;
 pub mod expression;
 pub mod interpreter;
 pub mod iter;
@@ -134,8 +135,6 @@ mod test_utils;
 mod util;
 
 use core::{fmt, hash, str};
-#[cfg(feature = "std")]
-use std::error;
 
 use bitcoin::hashes::{hash160, ripemd160, sha256, Hash};
 use bitcoin::hex::DisplayHex;
@@ -143,6 +142,7 @@ use bitcoin::{script, Opcode};
 
 pub use crate::blanket_traits::FromStrKey;
 pub use crate::descriptor::{DefiniteDescriptorKey, Descriptor, DescriptorPublicKey};
+pub use crate::error::{NoString, ResultExt, SpanOnly, WithSpan};
 pub use crate::expression::ParseThresholdError;
 pub use crate::interpreter::Interpreter;
 pub use crate::miniscript::analyzable::{AnalysisError, ExtParams};
@@ -562,8 +562,8 @@ impl fmt::Display for Error {
 }
 
 #[cfg(feature = "std")]
-impl error::Error for Error {
-    fn cause(&self) -> Option<&dyn error::Error> {
+impl std::error::Error for Error {
+    fn cause(&self) -> Option<&dyn std::error::Error> {
         use self::Error::*;
 
         match self {
