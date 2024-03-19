@@ -4,13 +4,17 @@
 //!
 
 mod error;
+pub mod tree;
 
 use core::fmt;
 use core::str::FromStr;
 
-pub use self::error::ParseThresholdError;
+pub use error::{
+    InvalidCharacterError, LeafError, ParseNumError, ParseThresholdError, ParseTreeError,
+};
+
 use crate::prelude::*;
-use crate::{errstr, Error, Threshold, MAX_RECURSION_DEPTH};
+use crate::{errstr, Error, ResultExt as _, Threshold, WithSpan, MAX_RECURSION_DEPTH};
 
 /// Allowed characters are descriptor strings.
 pub const INPUT_CHARSET: &str = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ ";
@@ -235,6 +239,24 @@ pub fn check_valid_chars(s: &str) -> Result<(), Error> {
         }
     }
     Ok(())
+}
+
+// This function will be renamed to `check_valid_chars`, which will be deleted, in a later commit.
+/// Filter out non-ASCII because we byte-index strings all over the
+/// place and Rust gets very upset when you splinch a string.
+///
+/// Returns the number of nodes, as determined by counting `)` and `,`
+/// characters.
+fn check_valid_chars2(s: &str) -> Result<usize, WithSpan<InvalidCharacterError>> {
+    let mut ret = 0;
+    for (n, ch) in s.char_indices() {
+        // Index bounds: We know that ch is ASCII, so it is <= 127.
+        if !ch.is_ascii() || VALID_CHARS[ch as usize].is_none() {
+            return Err(InvalidCharacterError::invalid_character(ch)).with_index(n);
+        }
+        ret += usize::from(ch == ')' || ch == ',');
+    }
+    Ok(ret)
 }
 
 /// Parse a string as a u32, for timelocks or thresholds
