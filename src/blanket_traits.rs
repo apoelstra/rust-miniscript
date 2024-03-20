@@ -15,6 +15,7 @@
 use core::str::FromStr;
 use core::{fmt, hash};
 
+use crate::error::BoxableError;
 use crate::MiniscriptKey;
 
 /// Blanket trait describing a key where all associated types implement `FromStr`,
@@ -36,7 +37,7 @@ pub trait FromStrKey:
         + fmt::Debug
         + hash::Hash;
     /// Dummy type. Do not use.
-    type _Sha256FromStrErr: fmt::Debug + fmt::Display;
+    type _Sha256FromStrErr: fmt::Debug + fmt::Display + BoxableError;
     /// Dummy type. Do not use.
     type _Hash256: FromStr<Err = Self::_Hash256FromStrErr>
         + Clone
@@ -46,7 +47,7 @@ pub trait FromStrKey:
         + fmt::Debug
         + hash::Hash;
     /// Dummy type. Do not use.
-    type _Hash256FromStrErr: fmt::Debug + fmt::Display;
+    type _Hash256FromStrErr: fmt::Debug + fmt::Display + BoxableError;
     /// Dummy type. Do not use.
     type _Ripemd160: FromStr<Err = Self::_Ripemd160FromStrErr>
         + Clone
@@ -56,7 +57,7 @@ pub trait FromStrKey:
         + fmt::Debug
         + hash::Hash;
     /// Dummy type. Do not use.
-    type _Ripemd160FromStrErr: fmt::Debug + fmt::Display;
+    type _Ripemd160FromStrErr: fmt::Debug + fmt::Display + BoxableError;
     /// Dummy type. Do not use.
     type _Hash160: FromStr<Err = Self::_Hash160FromStrErr>
         + Clone
@@ -66,9 +67,9 @@ pub trait FromStrKey:
         + fmt::Debug
         + hash::Hash;
     /// Dummy type. Do not use.
-    type _Hash160FromStrErr: fmt::Debug + fmt::Display;
+    type _Hash160FromStrErr: fmt::Debug + fmt::Display + BoxableError;
     /// Dummy type. Do not use.
-    type _FromStrErr: fmt::Debug + fmt::Display;
+    type _FromStrErr: fmt::Debug + fmt::Display + BoxableError;
 }
 
 impl<T> FromStrKey for T

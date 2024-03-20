@@ -193,15 +193,73 @@ impl<E: std::error::Error, S: fmt::Debug + fmt::Display + 'static> std::error::E
     fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { self.inner.source() }
 }
 
+/// A "generic error" which abstracts an arbitrary other error type.
+#[cfg(not(feature = "std"))]
+pub struct BoxedError(Box<dyn fmt::Display>);
+
+/// A "generic error" which abstracts an arbitrary other error type.
+#[cfg(feature = "std")]
+pub struct BoxedError(Box<dyn std::error::Error>);
+
+impl fmt::Debug for BoxedError {
+    #[cfg(not(feature = "std"))]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(&self.0, f) }
+
+    #[cfg(feature = "std")]
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { self.0.fmt(f) }
+}
+
+impl fmt::Display for BoxedError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { self.0.fmt(f) }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for BoxedError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> { self.0.source() }
+}
+
+/// Crate-level API for boxing generic errors.
+pub(crate) trait BoxableError {
+    /// Constructor for a boxed error from an ordinary error.
+    ///
+    /// When `std` is on, this takes a `std::error::Error`; otherwise it takes a
+    /// `core::fmt::Display`. This **must only** be called on types which match
+    /// this profile (are `Display` in no-std and `Error` in std), or compilation
+    /// will break. This method is not public because otherwise we would be
+    /// exposing an API that could break if our users failed to heed this warning.
+    fn box_err(self) -> BoxedError;
+}
+
+#[cfg(feature = "std")]
+impl<T: std::error::Error + 'static> BoxableError for T {
+    fn box_err(self) -> BoxedError { BoxedError(Box::new(self)) }
+}
+
+#[cfg(not(feature = "std"))]
+impl<T: fmt::Display + 'static> BoxableError for T {
+    fn box_err(self) -> BoxedError { BoxedError(Box::new(self)) }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
 
     #[test]
     fn no_string_hack() {
+        // Tests that we can use the `has_no_string` method to "statically"
+        // determine whether we are dealing with a WithSpan<NoString> or
+        // some other WithSpan<T>.
         let non_static = "hmm".to_owned();
         assert!(WithSpan { string: NoString, span: 0..0, inner: () }.has_no_string());
         assert!(!WithSpan { string: "hmm", span: 0..0, inner: () }.has_no_string());
         assert!(!WithSpan { string: &non_static, span: 0..0, inner: () }.has_no_string());
+    }
+
+    #[test]
+    fn boxing_an_error() {
+        use core::str::FromStr;
+        u32::from_str("")
+            .map_err(BoxableError::box_err)
+            .unwrap_err();
     }
 }

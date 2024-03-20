@@ -142,7 +142,7 @@ use bitcoin::{script, Opcode};
 
 pub use crate::blanket_traits::FromStrKey;
 pub use crate::descriptor::{DefiniteDescriptorKey, Descriptor, DescriptorPublicKey};
-pub use crate::error::{NoString, ResultExt, SpanOnly, WithSpan};
+pub use crate::error::{BoxedError, NoString, ResultExt, SpanOnly, WithSpan};
 pub use crate::expression::ParseThresholdError;
 pub use crate::interpreter::Interpreter;
 pub use crate::miniscript::analyzable::{AnalysisError, ExtParams};
