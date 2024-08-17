@@ -139,7 +139,7 @@ pub use crate::descriptor::{DefiniteDescriptorKey, Descriptor, DescriptorPublicK
 pub use crate::error::ParseError;
 pub use crate::expression::{ParseNumError, ParseThresholdError, ParseTreeError};
 pub use crate::interpreter::Interpreter;
-pub use crate::key::{MiniscriptKey, ToPublicKey};
+pub use crate::key::{ErasedKey, MiniscriptKey, ToPublicKey};
 pub use crate::miniscript::analyzable::{AnalysisError, ExtParams};
 pub use crate::miniscript::context::{BareCtx, Legacy, ScriptContext, Segwitv0, SigType, Tap};
 pub use crate::miniscript::decode::Terminal;

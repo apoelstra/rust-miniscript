@@ -157,6 +157,25 @@ impl ToPublicKey for bitcoin::secp256k1::XOnlyPublicKey {
     fn to_hash160(hash: &hash160::Hash) -> hash160::Hash { *hash }
 }
 
+/// A dummy type containing no key information.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ErasedKey;
+
+impl fmt::Debug for ErasedKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { fmt::Display::fmt(self, f) }
+}
+
+impl fmt::Display for ErasedKey {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result { f.write_str("<erased>") }
+}
+
+impl MiniscriptKey for ErasedKey {
+    type Sha256 = Self;
+    type Hash256 = Self;
+    type Ripemd160 = Self;
+    type Hash160 = Self;
+}
+
 #[cfg(test)]
 mod tests {
     use core::str::FromStr;
