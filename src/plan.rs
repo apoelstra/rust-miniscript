@@ -740,9 +740,9 @@ mod test {
     use std::str::FromStr;
 
     use bitcoin::bip32::Xpub;
+    use bitcoin::hashes::Hash as _;
 
     use super::*;
-    use crate::*;
 
     #[allow(clippy::type_complexity)]
     fn test_inner(
