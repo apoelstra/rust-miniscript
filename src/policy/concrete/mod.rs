@@ -3,6 +3,8 @@
 //! Concrete Policies
 //!
 
+mod inner;
+
 use core::{fmt, str};
 #[cfg(feature = "std")]
 use std::error;
@@ -19,6 +21,7 @@ use {
     core::cmp::Reverse,
 };
 
+use self::inner::Inner;
 use crate::expression::{self, FromTree};
 use crate::iter::{Tree, TreeLike};
 use crate::miniscript::types::extra_props::TimelockInfo;
@@ -33,6 +36,152 @@ use crate::{
 /// Maximum TapLeafs allowed in a compiled TapTree
 #[cfg(feature = "compiler")]
 const MAX_COMPILATION_LEAVES: usize = 1024;
+
+/// Policy which can be compiled to Miniscript.
+///
+/// Disjurnctions are annotated with satisfaction probabilities to assist
+/// the compiler.
+#[derive(Clone, Debug)]
+pub struct Policy2<Pk: MiniscriptKey> {
+    inner: Inner<Pk, Arc<Self>>,
+}
+
+impl<Pk: MiniscriptKey> Policy2<Pk> {
+    /// Creates a new unsatisfiable policy.
+    pub fn unsatisfiable() -> Self { Policy2 { inner: Inner::Unsatisfiable } }
+
+    /// Creates a new trivial policy.
+    pub fn trivial() -> Self { Policy2 { inner: Inner::Trivial } }
+
+    /// Creates a new signature-requiring policy.
+    pub fn key(key: Pk) -> Self { Policy2 { inner: Inner::Key(key) } }
+
+    /// Creates a new `after` absolute timelock policy.
+    pub fn after(lock_time: AbsLockTime) -> Self { Policy2 { inner: Inner::After(lock_time) } }
+
+    /// Creates a new `older` relative timelock policy.
+    pub fn older(lock_time: RelLockTime) -> Self { Policy2 { inner: Inner::Older(lock_time) } }
+
+    /// Creates a new `sha256` hashlock policy.
+    pub fn sha256(h: Pk::Sha256) -> Self { Policy2 { inner: Inner::Sha256(h) } }
+
+    /// Creates a new `hash256` hashlock policy.
+    pub fn hash256(h: Pk::Hash256) -> Self { Policy2 { inner: Inner::Hash256(h) } }
+
+    /// Creates a new `ripemd160` hashlock policy.
+    pub fn ripemd160(h: Pk::Ripemd160) -> Self { Policy2 { inner: Inner::Ripemd160(h) } }
+
+    /// Creates a new `hash160` hashlock policy.
+    pub fn hash160(h: Pk::Hash160) -> Self { Policy2 { inner: Inner::Hash160(h) } }
+
+    /// Creates a new conjunction of two policies.
+    pub fn and(left: Arc<Self>, right: Arc<Self>) -> Self {
+        Policy2 { inner: Inner::And(left, right) }
+    }
+
+    /// Creates a new disjunction of two policies, with given relative probabilities.
+    ///
+    /// Relative probabilities are used to inform the compiler which branch is
+    /// more likely to be taken. They are used as proportions within a single
+    /// OR, and are normalized to sum to 1.0. So for example, if `p_left` is
+    /// set to 1.0 and `p_right` to 3.0, this indicates that the right branch
+    /// is 3x as likely as the left branch to be taken.
+    ///
+    /// # Panics
+    ///
+    /// Panics if either probability is negative, or if both probabilities are set to 0.0.
+    pub fn or(p_left: f64, left: Arc<Self>, p_right: f64, right: Arc<Self>) -> Self {
+        assert!(p_left >= 0.0);
+        assert!(p_right >= 0.0);
+        assert_ne!(p_left + p_right, 0.0);
+        Policy2 { inner: Inner::Or((p_left, left), (p_right, right)) }
+    }
+
+    /// Creates a new k-of-n threshold of two policies.
+    ///
+    /// Thresholds do not support relative probabilities.
+    pub fn thresh(thresh: Threshold<Arc<Self>, 0>) -> Self {
+        Policy2 { inner: Inner::Thresh(thresh) }
+    }
+
+    /// Converts a policy using one kind of public key to another type of public key.
+    ///
+    /// For example usage please see [`crate::policy::semantic::Policy::translate_pk`].
+    pub fn translate_pk<T>(&self, t: &mut T) -> Result<Policy2<T::TargetPk>, T::Error>
+    where
+        T: Translator<Pk>,
+    {
+        let mut translated: Vec<Arc<Policy2<T::TargetPk>>> = vec![];
+        for data in (1.0, self).rtl_post_order_iter() {
+            let new_inner = data
+                .node
+                .1
+                .inner
+                .map_ref(|_| translated.pop().unwrap())
+                .translate_pk(t)?;
+
+            translated.push(Arc::new(Policy2 { inner: new_inner }));
+        }
+        // Unwrap is ok because we know we processed at least one node.
+        let root_node = translated.pop().unwrap();
+        // Unwrap is ok because we know `root_node` is the only strong reference.
+        Ok(Arc::try_unwrap(root_node).unwrap())
+    }
+
+    /// Gets all keys in the policy.
+    pub fn key_iter(&self) -> KeyIter<Pk> {
+        KeyIter {
+            iter: (1.0, self)
+                .pre_order_iter()
+                .filter_map(|(_, policy)| match policy.inner {
+                    Inner::Key(ref pk) => Some(pk),
+                    _ => None,
+                }),
+        }
+    }
+}
+
+/// Iterator over the keys of a policy.
+pub struct KeyIter<'a, Pk: MiniscriptKey> {
+    #[allow(clippy::type_complexity)]
+    iter: core::iter::FilterMap<
+        crate::iter::PreOrderIter<(f64, &'a Policy2<Pk>)>,
+        fn((f64, &Policy2<Pk>)) -> Option<&Pk>,
+    >,
+}
+
+impl<'a, Pk: MiniscriptKey> Iterator for KeyIter<'a, Pk> {
+    type Item = &'a Pk;
+
+    fn next(&mut self) -> Option<Self::Item> { self.iter.next() }
+}
+
+impl<'a, Pk: MiniscriptKey> TreeLike for (f64, &'a Policy2<Pk>) {
+    type NaryChildren = (f64, &'a [Arc<Policy2<Pk>>]);
+
+    fn nary_len(tc: &Self::NaryChildren) -> usize { tc.1.len() }
+    fn nary_index(tc: Self::NaryChildren, idx: usize) -> Self { (tc.0, &tc.1[idx]) }
+
+    fn as_node(&self) -> Tree<Self, Self::NaryChildren> {
+        match self.1.inner {
+            Inner::Unsatisfiable
+            | Inner::Trivial
+            | Inner::Key(_)
+            | Inner::After(_)
+            | Inner::Older(_)
+            | Inner::Sha256(_)
+            | Inner::Hash256(_)
+            | Inner::Ripemd160(_)
+            | Inner::Hash160(_) => Tree::Nullary,
+            Inner::And(ref left, ref right) => Tree::Binary((self.0, left), (self.0, right)),
+            Inner::Or((lp, ref left), (rp, ref right)) => {
+                let norm_factor = self.0 / (lp + rp);
+                Tree::Binary((norm_factor * lp, left), (norm_factor * rp, right))
+            }
+            Inner::Thresh(ref thresh) => Tree::Nary((self.0, thresh.data())),
+        }
+    }
+}
 
 /// Concrete policy which corresponds directly to a miniscript structure,
 /// and whose disjunctions are annotated with satisfaction probabilities
