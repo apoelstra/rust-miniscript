@@ -156,6 +156,7 @@ impl<'p, Pk: MiniscriptKey> Iterator for TapleafProbabilityIter<'p, Pk> {
     }
 }
 
+#[cfg(feature = "compiler")]
 impl<Pk: MiniscriptKey> Policy<Pk> {
     /// Flattens the [`Policy`] tree structure into an iterator of tuples `(leaf script, leaf probability)`
     /// with leaf probabilities corresponding to odds for each sub-branch in the policy.
@@ -179,13 +180,11 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     ///
     /// Since this splitting might lead to exponential blow-up, we constrain the number of
     /// leaf-nodes to [`MAX_COMPILATION_LEAVES`].
-    #[cfg(feature = "compiler")]
     fn tapleaf_probability_iter(&self) -> TapleafProbabilityIter<Pk> {
         TapleafProbabilityIter { stack: vec![(1.0, self)] }
     }
 
     /// Extracts the internal_key from this policy tree.
-    #[cfg(feature = "compiler")]
     fn extract_key(self, unspendable_key: Option<Pk>) -> Result<(Pk, Policy<Pk>), CompilerError> {
         let internal_key = self
             .tapleaf_probability_iter()
@@ -220,7 +219,6 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     /// or [doc/Tr compiler.pdf] in the root of the repository to understand why such compilation
     /// is also *cost-efficient*.
     // TODO: We might require other compile errors for Taproot.
-    #[cfg(feature = "compiler")]
     pub fn compile_tr(&self, unspendable_key: Option<Pk>) -> Result<Descriptor<Pk>, CompilerError> {
         self.is_valid().map_err(CompilerError::PolicyError)?;
         match self.is_safe_nonmalleable() {
@@ -280,7 +278,6 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     /// enumeration or limits exceed. For a given [`Policy`], we maintain an [ordered
     /// set](`BTreeSet`) of `(prob, policy)` (ordered by probability) to maintain the list of
     /// enumerated sub-policies whose disjunction is isomorphic to initial policy (*invariant*).
-    #[cfg(feature = "compiler")]
     pub fn compile_tr_private_experimental(
         &self,
         unspendable_key: Option<Pk>,
@@ -333,7 +330,6 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     /// It is **not recommended** to use policy as a stable identifier for a miniscript. You should
     /// use the policy compiler once, and then use the miniscript output as a stable identifier. See
     /// the compiler document in [`doc/compiler.md`] for more details.
-    #[cfg(feature = "compiler")]
     pub fn compile_to_descriptor<Ctx: ScriptContext>(
         &self,
         desc_ctx: DescriptorCtx<Pk>,
@@ -361,7 +357,6 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     /// It is **not recommended** to use policy as a stable identifier for a miniscript. You should
     /// use the policy compiler once, and then use the miniscript output as a stable identifier. See
     /// the compiler document in doc/compiler.md for more details.
-    #[cfg(feature = "compiler")]
     pub fn compile<Ctx: ScriptContext>(&self) -> Result<Miniscript<Pk, Ctx>, CompilerError> {
         self.is_valid()?;
         match self.is_safe_nonmalleable() {
@@ -370,16 +365,12 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
             _ => compiler::best_compilation(self),
         }
     }
-}
 
-#[cfg(feature = "compiler")]
-impl<Pk: MiniscriptKey> Policy<Pk> {
     /// Returns a vector of policies whose disjunction is isomorphic to the initial one.
     ///
     /// This function is supposed to incrementally expand i.e. represent the policy as
     /// disjunction over sub-policies output by it. The probability calculations are similar
     /// to [`Policy::tapleaf_probability_iter`].
-    #[cfg(feature = "compiler")]
     fn enumerate_pol(&self, prob: f64) -> Vec<(f64, Arc<Self>)> {
         match self {
             Policy::Or(subs) => {
@@ -406,7 +397,6 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     /// enumeration or limits exceed. For a given [`Policy`], we maintain an [ordered
     /// set](`BTreeSet`) of `(prob, policy)` (ordered by probability) to maintain the list of
     /// enumerated sub-policies whose disjunction is isomorphic to initial policy (*invariant*).
-    #[cfg(feature = "compiler")]
     fn enumerate_policy_tree(self, prob: f64) -> Vec<(f64, Arc<Self>)> {
         let mut tapleaf_prob_vec = BTreeSet::<(Reverse<OrdF64>, Arc<Self>)>::new();
         // Store probability corresponding to policy in the enumerated tree. This is required since
@@ -502,6 +492,19 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
 
         ret
     }
+
+    /// Gets the number of [TapLeaf](`TapTree::Leaf`)s considering exhaustive root-level [`Policy::Or`]
+    /// and [`Policy::Thresh`] disjunctions for the `TapTree`.
+    fn num_tap_leaves(&self) -> usize { self.tapleaf_probability_iter().count() }
+
+    /// Does checks on the number of `TapLeaf`s.
+    fn check_num_tapleaves(&self) -> Result<(), CompilerError> {
+        let n = self.num_tap_leaves();
+        if n > MAX_COMPILATION_LEAVES {
+            return Err(CompilerError::TooManyTapleaves { n, max: MAX_COMPILATION_LEAVES });
+        }
+        Ok(())
+    }
 }
 
 impl<Pk: MiniscriptKey> ForEachKey<Pk> for Policy<Pk> {
@@ -587,21 +590,6 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
                 _ => None,
             })
             .collect()
-    }
-
-    /// Gets the number of [TapLeaf](`TapTree::Leaf`)s considering exhaustive root-level [`Policy::Or`]
-    /// and [`Policy::Thresh`] disjunctions for the `TapTree`.
-    #[cfg(feature = "compiler")]
-    fn num_tap_leaves(&self) -> usize { self.tapleaf_probability_iter().count() }
-
-    /// Does checks on the number of `TapLeaf`s.
-    #[cfg(feature = "compiler")]
-    fn check_num_tapleaves(&self) -> Result<(), CompilerError> {
-        let n = self.num_tap_leaves();
-        if n > MAX_COMPILATION_LEAVES {
-            return Err(CompilerError::TooManyTapleaves { n, max: MAX_COMPILATION_LEAVES });
-        }
-        Ok(())
     }
 
     /// Checks whether the policy contains duplicate public keys.
