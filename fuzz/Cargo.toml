@@ -12,6 +12,7 @@ cargo-fuzz = true
 [dependencies]
 honggfuzz = { version = "0.5.56", default-features = false }
 miniscript = { path = "..", features = [ "compiler" ] }
+old_miniscript = { package = "miniscript", git = "https://github.com/apoelstra/rust-miniscript/", rev = "1259375d7b7c91053e09d1cbe3db983612fe301c" }
 
 regex = "1.0"
 
@@ -30,6 +31,10 @@ path = "fuzz_targets/parse_descriptor.rs"
 [[bin]]
 name = "parse_descriptor_secret"
 path = "fuzz_targets/parse_descriptor_secret.rs"
+
+[[bin]]
+name = "regression_descriptor_parse"
+path = "fuzz_targets/regression_descriptor_parse.rs"
 
 [[bin]]
 name = "roundtrip_concrete"

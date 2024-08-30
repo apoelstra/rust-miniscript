@@ -24,6 +24,7 @@ cargo-fuzz = true
 [dependencies]
 honggfuzz = { version = "0.5.56", default-features = false }
 miniscript = { path = "..", features = [ "compiler" ] }
+old_miniscript = { package = "miniscript", git = "https://github.com/apoelstra/rust-miniscript/", rev = "1259375d7b7c91053e09d1cbe3db983612fe301c" }
 
 regex = "1.0"
 EOF
