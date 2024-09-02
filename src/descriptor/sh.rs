@@ -87,7 +87,7 @@ impl<Pk: FromStrKey> crate::expression::FromTree for Sh<Pk> {
             .map_err(From::from)
             .map_err(Error::Parse)?;
 
-        let inner = match top.name {
+        let inner = match top.name() {
             "wsh" => ShInner::Wsh(Wsh::from_tree(top)?),
             "wpkh" => ShInner::Wpkh(Wpkh::from_tree(top)?),
             "sortedmulti" => ShInner::SortedMulti(SortedMultiVec::from_tree(top)?),

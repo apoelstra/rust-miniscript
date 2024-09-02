@@ -112,10 +112,14 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> crate::expression::FromTree for Termina
                 top.verify_n_children("andor", 3..=3)
                     .map_err(From::from)
                     .map_err(Error::Parse)?;
-                let x = Arc::<Miniscript<Pk, Ctx>>::from_tree(&top.args[0])?;
-                let y = Arc::<Miniscript<Pk, Ctx>>::from_tree(&top.args[1])?;
-                let z = Arc::<Miniscript<Pk, Ctx>>::from_tree(&top.args[2])?;
-                Ok(Terminal::AndOr(x, y, z))
+                let mut child_iter = top
+                    .children()
+                    .map(|x| Arc::<Miniscript<Pk, Ctx>>::from_tree(x));
+                Ok(Terminal::AndOr(
+                    child_iter.next().unwrap()?,
+                    child_iter.next().unwrap()?,
+                    child_iter.next().unwrap()?,
+                ))
             }
             "or_b" => binary(top, "or_b", Terminal::OrB),
             "or_d" => binary(top, "or_d", Terminal::OrD),
@@ -137,7 +141,7 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> crate::expression::FromTree for Termina
 
         if frag_wrap == Some("") {
             return Err(Error::Parse(crate::ParseError::Tree(
-                crate::ParseTreeError::UnknownName { name: top.name.to_owned() },
+                crate::ParseTreeError::UnknownName { name: top.name().to_owned() },
             )));
         }
         let ms = super::wrap_into_miniscript(unwrapped, frag_wrap.unwrap_or(""))?;

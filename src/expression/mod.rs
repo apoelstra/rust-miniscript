@@ -22,14 +22,14 @@ pub const INPUT_CHARSET: &str = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVW
 /// A token of the form `x(...)` or `x`
 pub struct Tree<'a> {
     /// The name `x`
-    pub name: &'a str,
+    name: &'a str,
     /// Position one past the last character of the node's name. If it has
     /// children, the position of the '(' or '{'.
-    pub children_pos: usize,
+    children_pos: usize,
     /// The type of parentheses surrounding the node's children.
-    pub parens: Parens,
+    parens: Parens,
     /// The comma-separated contents of the `(...)`, if any
-    pub args: Vec<Tree<'a>>,
+    args: Vec<Tree<'a>>,
 }
 
 impl PartialEq for Tree<'_> {
@@ -79,6 +79,32 @@ pub trait FromTree: Sized {
 }
 
 impl<'a> Tree<'a> {
+    /// The name of this tree node.
+    pub fn name(&self) -> &str { self.name }
+
+    /// The 0-indexed byte-position of the name in the original expression tree.
+    pub fn name_pos(&self) -> usize { self.children_pos - self.name.len() - 1 }
+
+    /// The 0-indexed byte-position of the '(' or '{' character which starts the
+    /// expression's children.
+    ///
+    /// If the expression has no children, returns one past the end of the name.
+    pub fn children_pos(&self) -> usize { self.children_pos - self.name.len() - 1 }
+
+    /// The number of children this node has.
+    pub fn n_children(&self) -> usize { self.args.len() }
+
+    /// The type of parenthesis surrounding this node's children.
+    ///
+    /// If the node has no children, this will be `Parens::None`.
+    pub fn parens(&self) -> Parens { self.parens }
+
+    /// An iterator over the direct children of this node.
+    ///
+    /// If you want to iterate recursively, use the [`TreeLike`] API which
+    /// provides methods `pre_order_iter` and `post_order_iter`.
+    pub fn children(&self) -> impl ExactSizeIterator<Item = &Self> { self.args.iter() }
+
     /// Split the name by a separating character.
     ///
     /// If the separator is present, returns the prefix before the separator and
@@ -260,20 +286,21 @@ impl<'a> Tree<'a> {
         &self,
         mut map_child: F,
     ) -> Result<Threshold<T, MAX>, E> {
+        let mut child_iter = self.children();
+        let kchild = match child_iter.next() {
+            Some(k) => k,
+            None => return Err(ParseThresholdError::NoChildren.into()),
+        };
         // First, special case "no arguments" so we can index the first argument without panics.
-        if self.args.is_empty() {
-            return Err(ParseThresholdError::NoChildren.into());
-        }
-
-        if !self.args[0].args.is_empty() {
+        if kchild.n_children() > 0 {
             return Err(ParseThresholdError::KNotTerminal.into());
         }
 
-        let k = parse_num(self.args[0].name).map_err(ParseThresholdError::ParseK)? as usize;
-        Threshold::new(k, vec![(); self.args.len() - 1])
+        let k = parse_num(kchild.name()).map_err(ParseThresholdError::ParseK)? as usize;
+        Threshold::new(k, vec![(); self.n_children() - 1])
             .map_err(ParseThresholdError::Threshold)
             .map_err(From::from)
-            .and_then(|thresh| thresh.translate_by_index(|i| map_child(&self.args[1 + i])))
+            .and_then(|thresh| thresh.translate_by_index(|_| map_child(child_iter.next().unwrap())))
     }
 
     /// Check that a tree has no curly-brace children in it.

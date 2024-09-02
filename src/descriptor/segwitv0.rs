@@ -253,7 +253,7 @@ impl<Pk: FromStrKey> crate::expression::FromTree for Wsh<Pk> {
             .map_err(From::from)
             .map_err(Error::Parse)?;
 
-        if top.name == "sortedmulti" {
+        if top.name() == "sortedmulti" {
             return Ok(Wsh { inner: WshInner::SortedMulti(SortedMultiVec::from_tree(top)?) });
         }
         let sub = Miniscript::from_tree(top)?;

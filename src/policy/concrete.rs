@@ -856,7 +856,7 @@ impl<Pk: FromStrKey> Policy<Pk> {
                 .map_err(From::from)
                 .map_err(Error::Parse)?
         } else {
-            (None, top.name)
+            (None, top.name())
         };
 
         let frag_prob = match frag_prob {
@@ -906,8 +906,7 @@ impl<Pk: FromStrKey> Policy<Pk> {
                     .map_err(From::from)
                     .map_err(Error::Parse)?;
                 let subs = top
-                    .args
-                    .iter()
+                    .children()
                     .map(|arg| Self::from_tree(arg).map(Arc::new))
                     .collect::<Result<_, Error>>()?;
                 Ok(Policy::And(subs))
@@ -917,8 +916,7 @@ impl<Pk: FromStrKey> Policy<Pk> {
                     .map_err(From::from)
                     .map_err(Error::Parse)?;
                 let subs = top
-                    .args
-                    .iter()
+                    .children()
                     .map(|arg| {
                         Self::from_tree_prob(arg, true).map(|(prob, sub)| (prob, Arc::new(sub)))
                     })

@@ -532,12 +532,12 @@ impl<Pk: FromStrKey> crate::expression::FromTree for Tr<Pk> {
             } else {
                 // From here on we are into the taptree.
                 if item.n_children_yielded == 0 {
-                    match item.node.parens {
+                    match item.node.parens() {
                         Parens::Curly => {
-                            if !item.node.name.is_empty() {
+                            if !item.node.name().is_empty() {
                                 return Err(Error::Parse(ParseError::Tree(
                                     ParseTreeError::IncorrectName {
-                                        actual: item.node.name.to_owned(),
+                                        actual: item.node.name().to_owned(),
                                         expected: "",
                                     },
                                 )));
@@ -545,7 +545,7 @@ impl<Pk: FromStrKey> crate::expression::FromTree for Tr<Pk> {
                             if round_paren_depth > 0 {
                                 return Err(Error::Parse(ParseError::Tree(
                                     ParseTreeError::IllegalCurlyBrace {
-                                        pos: item.node.children_pos,
+                                        pos: item.node.children_pos(),
                                     },
                                 )));
                             }
@@ -555,7 +555,7 @@ impl<Pk: FromStrKey> crate::expression::FromTree for Tr<Pk> {
                     }
                 }
                 if item.is_complete {
-                    if item.node.parens == Parens::Curly {
+                    if item.node.parens() == Parens::Curly {
                         if item.n_children_yielded == 2 {
                             let rchild = tree_stack.pop().unwrap();
                             let lchild = tree_stack.pop().unwrap();
@@ -571,7 +571,7 @@ impl<Pk: FromStrKey> crate::expression::FromTree for Tr<Pk> {
                             )));
                         }
                     } else {
-                        if item.node.parens == Parens::Round {
+                        if item.node.parens() == Parens::Round {
                             round_paren_depth -= 1;
                         }
                         if round_paren_depth == 0 {

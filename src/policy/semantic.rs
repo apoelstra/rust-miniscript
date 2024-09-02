@@ -285,7 +285,7 @@ serde_string_impl_pk!(Policy, "a miniscript semantic policy");
 
 impl<Pk: FromStrKey> expression::FromTree for Policy<Pk> {
     fn from_tree(top: &expression::Tree) -> Result<Policy<Pk>, Error> {
-        match top.name {
+        match top.name() {
             "UNSATISFIABLE" => {
                 top.verify_n_children("UNSATISFIABLE", 0..=0)
                     .map_err(From::from)
@@ -325,8 +325,7 @@ impl<Pk: FromStrKey> expression::FromTree for Policy<Pk> {
                     .map_err(From::from)
                     .map_err(Error::Parse)?;
                 let subs = top
-                    .args
-                    .iter()
+                    .children()
                     .map(|arg| Self::from_tree(arg).map(Arc::new))
                     .collect::<Result<Vec<_>, Error>>()?;
                 Ok(Policy::Thresh(Threshold::new(subs.len(), subs).map_err(Error::Threshold)?))
@@ -336,8 +335,7 @@ impl<Pk: FromStrKey> expression::FromTree for Policy<Pk> {
                     .map_err(From::from)
                     .map_err(Error::Parse)?;
                 let subs = top
-                    .args
-                    .iter()
+                    .children()
                     .map(|arg| Self::from_tree(arg).map(Arc::new))
                     .collect::<Result<Vec<_>, Error>>()?;
                 Ok(Policy::Thresh(Threshold::new(1, subs).map_err(Error::Threshold)?))
