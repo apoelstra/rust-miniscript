@@ -480,6 +480,11 @@ pub enum Error {
     Parse(ParseError),
 }
 
+#[doc(hidden)] // will be removed when we remove Error
+impl From<ParseThresholdError> for Error {
+    fn from(e: ParseThresholdError) -> Self { Self::ParseThreshold(e) }
+}
+
 // https://github.com/sipa/miniscript/pull/5 for discussion on this number
 const MAX_RECURSION_DEPTH: u32 = 402;
 

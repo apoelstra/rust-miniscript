@@ -122,27 +122,13 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> crate::expression::FromTree for Termina
             "or_c" => binary(top, "or_c", Terminal::OrC),
             "or_i" => binary(top, "or_i", Terminal::OrI),
             "thresh" => top
-                .to_null_threshold()
-                .map_err(Error::ParseThreshold)?
-                .translate_by_index(|i| Miniscript::from_tree(&top.args[1 + i]).map(Arc::new))
+                .verify_threshold(|sub| Miniscript::from_tree(sub).map(Arc::new))
                 .map(Terminal::Thresh),
             "multi" => top
-                .to_null_threshold()
-                .map_err(Error::ParseThreshold)?
-                .translate_by_index(|i| {
-                    top.args[1 + i]
-                        .verify_terminal("public key")
-                        .map_err(Error::Parse)
-                })
+                .verify_threshold(|sub| sub.verify_terminal("public_key").map_err(Error::Parse))
                 .map(Terminal::Multi),
             "multi_a" => top
-                .to_null_threshold()
-                .map_err(Error::ParseThreshold)?
-                .translate_by_index(|i| {
-                    top.args[1 + i]
-                        .verify_terminal("public key")
-                        .map_err(Error::Parse)
-                })
+                .verify_threshold(|sub| sub.verify_terminal("public_key").map_err(Error::Parse))
                 .map(Terminal::MultiA),
             x => Err(Error::Parse(crate::ParseError::Tree(crate::ParseTreeError::UnknownName {
                 name: x.to_owned(),

@@ -239,6 +239,43 @@ impl<'a> Tree<'a> {
         Ok((&self.args[0], &self.args[1]))
     }
 
+    /// Parses an expression tree as a threshold (a term with at least one child,
+    /// the first of which is a positive integer k).
+    ///
+    /// This sanity-checks that the threshold is well-formed (begins with a valid
+    /// threshold value, etc.) but does not parse the children of the threshold.
+    /// Instead it returns a threshold holding the empty type `()`, which is
+    /// constructed without any allocations, and expects the caller to convert
+    /// this to the "real" threshold type by calling [`Threshold::translate`].
+    ///
+    /// (An alternate API which does the conversion inline turned out to be
+    /// too messy; it needs to take a closure, have multiple generic parameters,
+    /// and be able to return multiple error types.)
+    pub fn verify_threshold<
+        const MAX: usize,
+        F: FnMut(&Self) -> Result<T, E>,
+        T,
+        E: From<ParseThresholdError>,
+    >(
+        &self,
+        mut map_child: F,
+    ) -> Result<Threshold<T, MAX>, E> {
+        // First, special case "no arguments" so we can index the first argument without panics.
+        if self.args.is_empty() {
+            return Err(ParseThresholdError::NoChildren.into());
+        }
+
+        if !self.args[0].args.is_empty() {
+            return Err(ParseThresholdError::KNotTerminal.into());
+        }
+
+        let k = parse_num(self.args[0].name).map_err(ParseThresholdError::ParseK)? as usize;
+        Threshold::new(k, vec![(); self.args.len() - 1])
+            .map_err(ParseThresholdError::Threshold)
+            .map_err(From::from)
+            .and_then(|thresh| thresh.translate_by_index(|i| map_child(&self.args[1 + i])))
+    }
+
     /// Check that a tree has no curly-brace children in it.
     pub fn verify_no_curly_braces(&self) -> Result<(), ParseTreeError> {
         for tree in self.pre_order_iter() {
@@ -402,34 +439,6 @@ impl<'a> Tree<'a> {
                 .unwrap_or((vec![], node_name_end, Parens::None));
         args.reverse();
         Ok(Tree { name: &s[..node_name_end], children_pos, parens, args })
-    }
-
-    /// Parses an expression tree as a threshold (a term with at least one child,
-    /// the first of which is a positive integer k).
-    ///
-    /// This sanity-checks that the threshold is well-formed (begins with a valid
-    /// threshold value, etc.) but does not parse the children of the threshold.
-    /// Instead it returns a threshold holding the empty type `()`, which is
-    /// constructed without any allocations, and expects the caller to convert
-    /// this to the "real" threshold type by calling [`Threshold::translate`].
-    ///
-    /// (An alternate API which does the conversion inline turned out to be
-    /// too messy; it needs to take a closure, have multiple generic parameters,
-    /// and be able to return multiple error types.)
-    pub fn to_null_threshold<const MAX: usize>(
-        &self,
-    ) -> Result<Threshold<(), MAX>, ParseThresholdError> {
-        // First, special case "no arguments" so we can index the first argument without panics.
-        if self.args.is_empty() {
-            return Err(ParseThresholdError::NoChildren);
-        }
-
-        if !self.args[0].args.is_empty() {
-            return Err(ParseThresholdError::KNotTerminal);
-        }
-
-        let k = parse_num(self.args[0].name).map_err(ParseThresholdError::ParseK)? as usize;
-        Threshold::new(k, vec![(); self.args.len() - 1]).map_err(ParseThresholdError::Threshold)
     }
 }
 

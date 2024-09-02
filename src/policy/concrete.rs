@@ -926,10 +926,8 @@ impl<Pk: FromStrKey> Policy<Pk> {
                 Ok(Policy::Or(subs))
             }
             "thresh" => top
-                .to_null_threshold()
-                .map_err(Error::ParseThreshold)?
-                .translate_by_index(|i| Policy::from_tree(&top.args[1 + i]).map(Arc::new))
-                .map(Policy::Thresh),
+                .verify_threshold(|sub| Self::from_tree(sub).map(Arc::new))
+                .map(Self::Thresh),
             x => Err(Error::Parse(crate::ParseError::Tree(crate::ParseTreeError::UnknownName {
                 name: x.to_owned(),
             }))),
