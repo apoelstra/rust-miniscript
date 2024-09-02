@@ -59,7 +59,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
     }
 
     /// Parse an expression tree into a SortedMultiVec
-    pub fn from_tree(tree: &expression::Tree) -> Result<Self, Error>
+    pub fn from_tree(tree: expression::TreeIterItem) -> Result<Self, Error>
     where
         Pk: FromStrKey,
     {

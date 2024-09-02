@@ -247,7 +247,7 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Wsh<Pk> {
 }
 
 impl<Pk: FromStrKey> crate::expression::FromTree for Wsh<Pk> {
-    fn from_tree(top: &expression::Tree) -> Result<Self, Error> {
+    fn from_tree(top: expression::TreeIterItem) -> Result<Self, Error> {
         let top = top
             .verify_toplevel("wsh", 1..=1)
             .map_err(From::from)
@@ -284,7 +284,7 @@ impl<Pk: FromStrKey> core::str::FromStr for Wsh<Pk> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let top = expression::Tree::from_str(s)?;
-        Wsh::<Pk>::from_tree(&top)
+        Wsh::<Pk>::from_tree(top.root())
     }
 }
 
@@ -483,7 +483,7 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Wpkh<Pk> {
 }
 
 impl<Pk: FromStrKey> crate::expression::FromTree for Wpkh<Pk> {
-    fn from_tree(top: &expression::Tree) -> Result<Self, Error> {
+    fn from_tree(top: expression::TreeIterItem) -> Result<Self, Error> {
         let pk = top
             .verify_terminal_parent("wpkh", "public key")
             .map_err(Error::Parse)?;
@@ -495,7 +495,7 @@ impl<Pk: FromStrKey> core::str::FromStr for Wpkh<Pk> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let top = expression::Tree::from_str(s)?;
-        Self::from_tree(&top)
+        Self::from_tree(top.root())
     }
 }
 

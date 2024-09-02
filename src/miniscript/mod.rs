@@ -725,7 +725,7 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     pub fn from_str_ext(s: &str, ext: &ExtParams) -> Result<Miniscript<Pk, Ctx>, Error> {
         // This checks for invalid ASCII chars
         let top = expression::Tree::from_str(s)?;
-        let ms: Miniscript<Pk, Ctx> = expression::FromTree::from_tree(&top)?;
+        let ms: Miniscript<Pk, Ctx> = expression::FromTree::from_tree(top.root())?;
         ms.ext_check(ext)?;
 
         if ms.ty.corr.base != types::Base::B {
@@ -737,19 +737,19 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
 }
 
 impl<Pk: FromStrKey, Ctx: ScriptContext> crate::expression::FromTree for Arc<Miniscript<Pk, Ctx>> {
-    fn from_tree(top: &expression::Tree) -> Result<Arc<Miniscript<Pk, Ctx>>, Error> {
-        Ok(Arc::new(expression::FromTree::from_tree(top)?))
+    fn from_tree(root: expression::TreeIterItem) -> Result<Arc<Miniscript<Pk, Ctx>>, Error> {
+        Ok(Arc::new(expression::FromTree::from_tree(root)?))
     }
 }
 
 impl<Pk: FromStrKey, Ctx: ScriptContext> crate::expression::FromTree for Miniscript<Pk, Ctx> {
     /// Parse an expression tree into a Miniscript. As a general rule, this
     /// should not be called directly; rather go through the descriptor API.
-    fn from_tree(top: &expression::Tree) -> Result<Miniscript<Pk, Ctx>, Error> {
-        top.verify_no_curly_braces()
+    fn from_tree(root: expression::TreeIterItem) -> Result<Miniscript<Pk, Ctx>, Error> {
+        root.verify_no_curly_braces()
             .map_err(From::from)
             .map_err(Error::Parse)?;
-        let inner: Terminal<Pk, Ctx> = expression::FromTree::from_tree(top)?;
+        let inner: Terminal<Pk, Ctx> = expression::FromTree::from_tree(root)?;
         Miniscript::from_ast(inner)
     }
 }

@@ -277,14 +277,14 @@ impl<Pk: FromStrKey> str::FromStr for Policy<Pk> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Policy<Pk>, Error> {
         let tree = expression::Tree::from_str(s)?;
-        expression::FromTree::from_tree(&tree)
+        expression::FromTree::from_tree(tree.root())
     }
 }
 
 serde_string_impl_pk!(Policy, "a miniscript semantic policy");
 
 impl<Pk: FromStrKey> expression::FromTree for Policy<Pk> {
-    fn from_tree(top: &expression::Tree) -> Result<Policy<Pk>, Error> {
+    fn from_tree(top: expression::TreeIterItem) -> Result<Policy<Pk>, Error> {
         match top.name() {
             "UNSATISFIABLE" => {
                 top.verify_n_children("UNSATISFIABLE", 0..=0)

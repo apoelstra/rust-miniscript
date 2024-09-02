@@ -175,8 +175,8 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Bare<Pk> {
 }
 
 impl<Pk: FromStrKey> FromTree for Bare<Pk> {
-    fn from_tree(top: &expression::Tree) -> Result<Self, Error> {
-        let sub = Miniscript::<Pk, BareCtx>::from_tree(top)?;
+    fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
+        let sub = Miniscript::<Pk, BareCtx>::from_tree(root)?;
         BareCtx::top_level_checks(&sub)?;
         Bare::new(sub)
     }
@@ -186,7 +186,7 @@ impl<Pk: FromStrKey> core::str::FromStr for Bare<Pk> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let top = expression::Tree::from_str(s)?;
-        Self::from_tree(&top)
+        Self::from_tree(top.root())
     }
 }
 
@@ -369,8 +369,8 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Pkh<Pk> {
 }
 
 impl<Pk: FromStrKey> FromTree for Pkh<Pk> {
-    fn from_tree(top: &expression::Tree) -> Result<Self, Error> {
-        let pk = top
+    fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
+        let pk = root
             .verify_terminal_parent("pkh", "public key")
             .map_err(Error::Parse)?;
         Pkh::new(pk).map_err(Error::ContextError)
@@ -381,7 +381,7 @@ impl<Pk: FromStrKey> core::str::FromStr for Pkh<Pk> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let top = expression::Tree::from_str(s)?;
-        Self::from_tree(&top)
+        Self::from_tree(top.root())
     }
 }
 

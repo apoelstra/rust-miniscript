@@ -835,7 +835,7 @@ impl<Pk: FromStrKey> str::FromStr for Policy<Pk> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Policy<Pk>, Error> {
         let tree = expression::Tree::from_str(s)?;
-        let policy: Policy<Pk> = FromTree::from_tree(&tree)?;
+        let policy: Policy<Pk> = FromTree::from_tree(tree.root())?;
         policy.check_timelocks().map_err(Error::ConcretePolicy)?;
         Ok(policy)
     }
@@ -847,7 +847,7 @@ impl<Pk: FromStrKey> Policy<Pk> {
     /// Helper function for `from_tree` to parse subexpressions with
     /// names of the form x@y
     fn from_tree_prob(
-        top: &expression::Tree,
+        top: expression::TreeIterItem,
         allow_prob: bool,
     ) -> Result<(usize, Policy<Pk>), Error> {
         // When 'allow_prob' is true we parse '@' signs out of node names.
@@ -935,8 +935,8 @@ impl<Pk: FromStrKey> Policy<Pk> {
 }
 
 impl<Pk: FromStrKey> expression::FromTree for Policy<Pk> {
-    fn from_tree(top: &expression::Tree) -> Result<Policy<Pk>, Error> {
-        Policy::from_tree_prob(top, false).map(|(_, result)| result)
+    fn from_tree(root: expression::TreeIterItem) -> Result<Policy<Pk>, Error> {
+        Policy::from_tree_prob(root, false).map(|(_, result)| result)
     }
 }
 

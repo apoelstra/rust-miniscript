@@ -14,7 +14,6 @@ use sync::Arc;
 use super::checksum;
 use crate::descriptor::DefiniteDescriptorKey;
 use crate::expression::{self, FromTree};
-use crate::iter::TreeLike as _;
 use crate::miniscript::satisfy::{Placeholder, Satisfaction, SchnorrSigType, Witness};
 use crate::miniscript::Miniscript;
 use crate::plan::AssetProvider;
@@ -495,99 +494,84 @@ impl<Pk: FromStrKey> core::str::FromStr for Tr<Pk> {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let expr_tree = expression::Tree::from_str(s)?;
-        Self::from_tree(&expr_tree)
+        Self::from_tree(expr_tree.root())
     }
 }
 
 impl<Pk: FromStrKey> crate::expression::FromTree for Tr<Pk> {
-    fn from_tree(expr_tree: &expression::Tree) -> Result<Self, Error> {
+    fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
         use crate::expression::{Parens, ParseTreeError};
 
-        expr_tree
-            .verify_toplevel("tr", 1..=2)
+        struct TreeStack<'s, Pk: MiniscriptKey> {
+            inner: Vec<(expression::TreeIterItem<'s>, TapTree<Pk>)>,
+        }
+
+        impl<'s, Pk: MiniscriptKey> TreeStack<'s, Pk> {
+            fn new() -> Self { Self { inner: Vec::with_capacity(128) } }
+
+            fn push(&mut self, parent: expression::TreeIterItem<'s>, tree: TapTree<Pk>) {
+                let mut next_push = (parent, tree);
+                while let Some(top) = self.inner.pop() {
+                    if next_push.0.index() == top.0.index() {
+                        next_push.0 = top.0.parent().unwrap();
+                        next_push.1 = TapTree::combine(top.1, next_push.1);
+                    } else {
+                        self.inner.push(top);
+                        break;
+                    }
+                }
+                self.inner.push(next_push);
+            }
+
+            fn pop_final(&mut self) -> Option<TapTree<Pk>> {
+                assert_eq!(self.inner.len(), 1);
+                self.inner.pop().map(|x| x.1)
+            }
+        }
+
+        root.verify_toplevel("tr", 1..=2)
             .map_err(From::from)
             .map_err(Error::Parse)?;
 
-        let mut round_paren_depth = 0;
+        let mut root_children = root.children();
+        let internal_key: Pk = root_children
+            .next()
+            .unwrap() // `verify_toplevel` above checked that first child existed
+            .verify_terminal("internal key")
+            .map_err(Error::Parse)?;
 
-        let mut internal_key = None;
-        let mut tree_stack = vec![];
+        let tap_tree = match root_children.next() {
+            None => return Tr::new(internal_key, None),
+            Some(tree) => tree,
+        };
 
-        for item in expr_tree.verbose_pre_order_iter() {
-            // Top-level "tr" node.
-            if item.index == 0 {
-                if item.is_complete {
-                    debug_assert!(
-                        internal_key.is_some(),
-                        "checked above that top-level 'tr' has children"
-                    );
+        let mut tree_stack = TreeStack::new();
+        let mut tap_tree_iter = tap_tree.pre_order_iter();
+        // while let construction needed because we modify the iterator inside the loop
+        // (by calling skip_descendants to skip over the contents of the tapscripts).
+        while let Some(node) = tap_tree_iter.next() {
+            if node.parens() == Parens::Curly {
+                if !node.name().is_empty() {
+                    return Err(Error::Parse(ParseError::Tree(ParseTreeError::IncorrectName {
+                        actual: node.name().to_owned(),
+                        expected: "",
+                    })));
                 }
-            } else if item.index == 1 {
-                // First child of tr, which must be the internal key
-                internal_key = item
-                    .node
-                    .verify_terminal("internal key")
-                    .map_err(Error::Parse)
-                    .map(Some)?;
+                node.verify_n_children("taptree branch", 2..=2)
+                    .map_err(From::from)
+                    .map_err(Error::Parse)?;
             } else {
-                // From here on we are into the taptree.
-                if item.n_children_yielded == 0 {
-                    match item.node.parens() {
-                        Parens::Curly => {
-                            if !item.node.name().is_empty() {
-                                return Err(Error::Parse(ParseError::Tree(
-                                    ParseTreeError::IncorrectName {
-                                        actual: item.node.name().to_owned(),
-                                        expected: "",
-                                    },
-                                )));
-                            }
-                            if round_paren_depth > 0 {
-                                return Err(Error::Parse(ParseError::Tree(
-                                    ParseTreeError::IllegalCurlyBrace {
-                                        pos: item.node.children_pos(),
-                                    },
-                                )));
-                            }
-                        }
-                        Parens::Round => round_paren_depth += 1,
-                        _ => {}
-                    }
-                }
-                if item.is_complete {
-                    if item.node.parens() == Parens::Curly {
-                        if item.n_children_yielded == 2 {
-                            let rchild = tree_stack.pop().unwrap();
-                            let lchild = tree_stack.pop().unwrap();
-                            tree_stack.push(TapTree::combine(lchild, rchild));
-                        } else {
-                            return Err(Error::Parse(ParseError::Tree(
-                                ParseTreeError::IncorrectNumberOfChildren {
-                                    description: "Taptree node",
-                                    n_children: item.n_children_yielded,
-                                    minimum: Some(2),
-                                    maximum: Some(2),
-                                },
-                            )));
-                        }
-                    } else {
-                        if item.node.parens() == Parens::Round {
-                            round_paren_depth -= 1;
-                        }
-                        if round_paren_depth == 0 {
-                            let script = Miniscript::from_tree(item.node)?;
-                            // FIXME hack for https://github.com/rust-bitcoin/rust-miniscript/issues/734
-                            if script.ty.corr.base != crate::miniscript::types::Base::B {
-                                return Err(Error::NonTopLevel(format!("{:?}", script)));
-                            };
-                            tree_stack.push(TapTree::Leaf(Arc::new(script)));
-                        }
-                    }
-                }
+                let script = Miniscript::from_tree(node)?;
+                // FIXME hack for https://github.com/rust-bitcoin/rust-miniscript/issues/734
+                if script.ty.corr.base != crate::miniscript::types::Base::B {
+                    return Err(Error::NonTopLevel(format!("{:?}", script)));
+                };
+
+                tree_stack.push(node.parent().unwrap(), TapTree::Leaf(Arc::new(script)));
+                tap_tree_iter.skip_descendants();
             }
         }
-        assert!(tree_stack.len() <= 1);
-        Tr::new(internal_key.unwrap(), tree_stack.pop())
+        Tr::new(internal_key, tree_stack.pop_final())
     }
 }
 

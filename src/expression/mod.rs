@@ -1,6 +1,28 @@
 // SPDX-License-Identifier: CC0-1.0
 
-//! # Function-like Expression Language
+//! Expression Trees
+//!
+//! This module represents expression trees, which are trees whose nodes have
+//! names and arbitrary numbers of children. As strings, they are defined by
+//! the following rules:
+//!
+//! * Any sequence of valid descriptor characters, including the empty string, is a "name".
+//! * A name is an expression (called a "leaf").
+//! * Given n expression trees `s_1`, ..., `s_n` and a name `X`, `X(s_1,...,s_n)` is an expression.
+//! * Given n expression trees `s_1`, ..., `s_n` and a name `X`, `X{s_1,...,s_n}` is an expression.
+//!
+//! Note that while `leaf` and `leaf()` are both expressions, only the former is
+//! actually a leaf. The latter has one child which is a leaf with an empty name.
+//! If these are intended to be equivalent, the caller must add logic to do this
+//! when converting the expression tree into its final type.
+//!
+//! All recursive structures in this library can be serialized and parsed as trees,
+//! though of course each data structure further limits the grammar (e.g. to enforce
+//! that names be valid Miniscript fragment names, public keys, hashes or timelocks).
+//!
+//! Users of this library probably do not need to use this module at all, unless they
+//! are implementing their own Miniscript-like structures or extensions to Miniscript.
+//! It is intended to be used as a utility to implement string parsing.
 //!
 
 mod error;
@@ -11,53 +33,131 @@ use core::str::FromStr;
 pub use self::error::{ParseNumError, ParseThresholdError, ParseTreeError};
 use crate::blanket_traits::StaticDebugAndDisplay;
 use crate::descriptor::checksum::verify_checksum;
-use crate::iter::{self, TreeLike};
 use crate::prelude::*;
 use crate::{AbsLockTime, Error, ParseError, RelLockTime, Threshold, MAX_RECURSION_DEPTH};
 
 /// Allowed characters are descriptor strings.
 pub const INPUT_CHARSET: &str = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ ";
 
-#[derive(Debug)]
-/// A token of the form `x(...)` or `x`
-pub struct Tree<'a> {
-    /// The name `x`
-    name: &'a str,
-    /// Position one past the last character of the node's name. If it has
-    /// children, the position of the '(' or '{'.
-    children_pos: usize,
-    /// The type of parentheses surrounding the node's children.
+/// Internal data structure representing a node of an expression tree.
+///
+/// Users of the public API will always interact with this using the
+/// wrapper type [`TreeIterItem`] which also contains a reference to
+/// the whole tree.
+#[derive(Debug, PartialEq, Eq)]
+struct TreeNode<'s> {
+    name: &'s str,
+    name_pos: usize,
     parens: Parens,
-    /// The comma-separated contents of the `(...)`, if any
-    args: Vec<Tree<'a>>,
+    n_children: usize,
+    index: usize,
+    parent_idx: Option<usize>,
+    last_child_idx: Option<usize>,
+    right_sibling_idx: Option<usize>,
 }
 
-impl PartialEq for Tree<'_> {
-    fn eq(&self, other: &Self) -> bool {
-        let mut stack = vec![(self, other)];
-        while let Some((me, you)) = stack.pop() {
-            if me.name != you.name || me.args.len() != you.args.len() {
-                return false;
-            }
-            stack.extend(me.args.iter().zip(you.args.iter()));
+impl TreeNode<'_> {
+    fn null(index: usize) -> Self {
+        TreeNode {
+            name: "",
+            name_pos: 0,
+            parens: Parens::None,
+            n_children: 0,
+            index,
+            parent_idx: None,
+            last_child_idx: None,
+            right_sibling_idx: None,
         }
-        true
     }
 }
-impl Eq for Tree<'_> {}
 
-impl<'a, 't> TreeLike for &'t Tree<'a> {
-    type NaryChildren = &'t [Tree<'a>];
+/// An iterator over the nodes of a tree, in pre-order.
+///
+/// This has several differences from the pre-order iterator provided by [`crate::iter::TreeLike`]:
+///
+/// * this is double-ended, so a right-to-left post-order iterator can be obtained by `.rev()`.
+/// * the yielded items represent sub-trees which themselves can be iterated from
+/// * the iterator can be told to skip all descendants of the current node, using
+///   [`PreOrderIter::skip_descendants`].
+pub struct PreOrderIter<'s> {
+    nodes: &'s [TreeNode<'s>],
+    inner: core::ops::RangeInclusive<usize>,
+}
 
-    fn nary_len(tc: &Self::NaryChildren) -> usize { tc.len() }
-    fn nary_index(tc: Self::NaryChildren, idx: usize) -> Self { &tc[idx] }
-
-    fn as_node(&self) -> iter::Tree<Self, Self::NaryChildren> {
-        if self.args.is_empty() {
-            iter::Tree::Nullary
-        } else {
-            iter::Tree::Nary(&self.args)
+impl PreOrderIter<'_> {
+    /// Skip all the descendants of the most recently-yielded item.
+    ///
+    /// Here "most recently-yielded item" means the most recently-yielded item when
+    /// running the iterator forward. If you run the iterator backward, e.g. by iterating
+    /// on `iter.by_ref().rev()`, those items are not considered, and the resulting
+    /// behavior of this function may be surprising.
+    ///
+    /// If this method is called before any nodes have been yielded, the entire iterator
+    /// will be skipped.
+    pub fn skip_descendants(&mut self) {
+        if self.inner.is_empty() {
+            return;
         }
+
+        let last_index = self.inner.start().saturating_sub(1);
+        // Construct a synthetic iterator over all descendants
+        let last_item = TreeIterItem { nodes: self.nodes, index: last_index };
+        let skip_past = last_item.rightmost_descendant_idx();
+        // ...and copy the indices out of that.
+        debug_assert!(skip_past + 1 >= *self.inner.start());
+        debug_assert!(skip_past <= *self.inner.end());
+        self.inner = skip_past + 1..=*self.inner.end();
+    }
+}
+
+impl<'s> Iterator for PreOrderIter<'s> {
+    type Item = TreeIterItem<'s>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        self.inner
+            .next()
+            .map(|n| TreeIterItem { nodes: self.nodes, index: n })
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) { self.inner.size_hint() }
+}
+
+impl DoubleEndedIterator for PreOrderIter<'_> {
+    fn next_back(&mut self) -> Option<Self::Item> {
+        self.inner
+            .next_back()
+            .map(|n| TreeIterItem { nodes: self.nodes, index: n })
+    }
+}
+
+impl ExactSizeIterator for PreOrderIter<'_> {
+    // The inner `RangeInclusive` does not impl ExactSizeIterator because the
+    // range 0..=usize::MAX would have length usize::MAX + 1. But we know
+    // that our range is limited by the `n_nodes` variable returned by
+    // `parse_pre_check`, and if THAT didn't overflow then this won't either.
+}
+
+/// A tree node, as yielded from an iterator.
+#[derive(Copy, Clone)]
+pub struct TreeIterItem<'s> {
+    nodes: &'s [TreeNode<'s>],
+    index: usize,
+}
+
+/// An iterator over the direct children of a tree node.
+pub struct DirectChildIterator<'s> {
+    current: Option<TreeIterItem<'s>>,
+}
+
+impl<'s> Iterator for DirectChildIterator<'s> {
+    type Item = TreeIterItem<'s>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let item = self.current.take()?;
+        self.current = item.nodes[item.index]
+            .right_sibling_idx
+            .map(|n| TreeIterItem { nodes: item.nodes, index: n });
+        Some(item)
     }
 }
 
@@ -75,35 +175,87 @@ pub enum Parens {
 /// A trait for extracting a structure from a Tree representation in token form
 pub trait FromTree: Sized {
     /// Extract a structure from Tree representation
-    fn from_tree(top: &Tree) -> Result<Self, Error>;
+    fn from_tree(root: TreeIterItem) -> Result<Self, Error>;
 }
 
-impl<'a> Tree<'a> {
+impl<'s> TreeIterItem<'s> {
     /// The name of this tree node.
-    pub fn name(&self) -> &str { self.name }
+    pub fn name(self) -> &'s str { self.nodes[self.index].name }
 
     /// The 0-indexed byte-position of the name in the original expression tree.
-    pub fn name_pos(&self) -> usize { self.children_pos - self.name.len() - 1 }
+    pub fn name_pos(self) -> usize { self.nodes[self.index].name_pos }
 
     /// The 0-indexed byte-position of the '(' or '{' character which starts the
     /// expression's children.
     ///
     /// If the expression has no children, returns one past the end of the name.
-    pub fn children_pos(&self) -> usize { self.children_pos - self.name.len() - 1 }
+    pub fn children_pos(self) -> usize { self.name_pos() + self.name().len() + 1 }
 
     /// The number of children this node has.
-    pub fn n_children(&self) -> usize { self.args.len() }
+    pub fn n_children(self) -> usize { self.nodes[self.index].n_children }
 
     /// The type of parenthesis surrounding this node's children.
     ///
     /// If the node has no children, this will be `Parens::None`.
-    pub fn parens(&self) -> Parens { self.parens }
+    pub fn parens(self) -> Parens { self.nodes[self.index].parens }
 
     /// An iterator over the direct children of this node.
     ///
     /// If you want to iterate recursively, use the [`TreeLike`] API which
     /// provides methods `pre_order_iter` and `post_order_iter`.
-    pub fn children(&self) -> impl ExactSizeIterator<Item = &Self> { self.args.iter() }
+    pub fn children(self) -> DirectChildIterator<'s> {
+        DirectChildIterator { current: self.first_child() }
+    }
+
+    /// The index of the node in its underlying tree.
+    pub fn index(&self) -> usize { self.index }
+
+    /// Accessor for the parent of the node, if it has a parent (is not the root).
+    pub fn parent(self) -> Option<Self> {
+        self.nodes[self.index]
+            .parent_idx
+            .map(|n| Self { nodes: self.nodes, index: n })
+    }
+
+    /// Whether the node is the first child of its parent.
+    ///
+    /// Returns false for the root.
+    pub fn is_first_child(self) -> bool {
+        self.nodes[self.index]
+            .parent_idx
+            .map(|n| n + 1 == self.index)
+            .unwrap_or(false)
+    }
+
+    /// Accessor for the first child of the node, if it has a first child.
+    pub fn first_child(self) -> Option<Self> {
+        // If the node has any children at all, its first child is the one right after it.
+        self.nodes[self.index]
+            .last_child_idx
+            .map(|_| Self { nodes: self.nodes, index: self.index + 1 })
+    }
+
+    /// Accessor for the sibling of the node, if it has one.
+    pub fn right_sibling(self) -> Option<Self> {
+        self.nodes[self.index]
+            .right_sibling_idx
+            .map(|n| Self { nodes: self.nodes, index: n })
+    }
+
+    /// Helper function to find the rightmost descendant of a node.
+    ///
+    /// Used to construct iterators which cover only the node and its descendants.
+    /// If the node has no descendants, returns its own index.
+    fn rightmost_descendant_idx(self) -> usize {
+        let mut scan = self.index;
+        while let Some(idx) = self.nodes[scan].last_child_idx {
+            scan = idx;
+            while let Some(idx) = self.nodes[scan].right_sibling_idx {
+                scan = idx;
+            }
+        }
+        scan
+    }
 
     /// Split the name by a separating character.
     ///
@@ -111,15 +263,18 @@ impl<'a> Tree<'a> {
     /// the suffix after the separator. Otherwise returns the whole name.
     ///
     /// If the separator occurs multiple times, returns an error.
-    pub fn name_separated(&self, separator: char) -> Result<(Option<&str>, &str), ParseTreeError> {
-        let mut name_split = self.name.splitn(3, separator);
+    pub fn name_separated(
+        self,
+        separator: char,
+    ) -> Result<(Option<&'s str>, &'s str), ParseTreeError> {
+        let mut name_split = self.name().splitn(3, separator);
         match (name_split.next(), name_split.next(), name_split.next()) {
             (None, _, _) => unreachable!("'split' always yields at least one element"),
-            (Some(_), None, _) => Ok((None, self.name)),
+            (Some(_), None, _) => Ok((None, self.name())),
             (Some(prefix), Some(name), None) => Ok((Some(prefix), name)),
             (Some(_), Some(_), Some(suffix)) => Err(ParseTreeError::MultipleSeparators {
                 separator,
-                pos: self.children_pos - suffix.len() - 1,
+                pos: self.children_pos() - suffix.len() - 1,
             }),
         }
     }
@@ -129,7 +284,7 @@ impl<'a> Tree<'a> {
     /// The `description` argument is only used to populate the error return,
     /// and is not validated in any way.
     pub fn verify_n_children(
-        &self,
+        self,
         description: &'static str,
         n_children: impl ops::RangeBounds<usize>,
     ) -> Result<(), ParseTreeError> {
@@ -167,19 +322,19 @@ impl<'a> Tree<'a> {
         &self,
         name: &'static str,
         n_children: impl ops::RangeBounds<usize>,
-    ) -> Result<&Self, ParseTreeError> {
+    ) -> Result<Self, ParseTreeError> {
         assert!(
             !n_children.contains(&0),
             "verify_toplevel is intended for nodes with >= 1 child"
         );
 
-        if self.name != name {
-            Err(ParseTreeError::IncorrectName { actual: self.name.to_owned(), expected: name })
-        } else if self.parens == Parens::Curly {
-            Err(ParseTreeError::IllegalCurlyBrace { pos: self.children_pos })
+        if self.name() != name {
+            Err(ParseTreeError::IncorrectName { actual: self.name().to_owned(), expected: name })
+        } else if self.parens() == Parens::Curly {
+            Err(ParseTreeError::IllegalCurlyBrace { pos: self.children_pos() })
         } else {
             self.verify_n_children(name, n_children)?;
-            Ok(&self.args[0])
+            Ok(self.first_child().unwrap())
         }
     }
 
@@ -191,10 +346,11 @@ impl<'a> Tree<'a> {
     pub fn verify_after(&self) -> Result<AbsLockTime, ParseError> {
         self.verify_n_children("after", 1..=1)
             .map_err(ParseError::Tree)?;
-        self.args[0]
+        let child = self.first_child().unwrap();
+        child
             .verify_n_children("absolute locktime", 0..=0)
             .map_err(ParseError::Tree)?;
-        parse_num(self.args[0].name)
+        parse_num(child.name())
             .map_err(ParseError::Num)
             .and_then(|n| AbsLockTime::from_consensus(n).map_err(ParseError::AbsoluteLockTime))
     }
@@ -207,10 +363,11 @@ impl<'a> Tree<'a> {
     pub fn verify_older(&self) -> Result<RelLockTime, ParseError> {
         self.verify_n_children("older", 1..=1)
             .map_err(ParseError::Tree)?;
-        self.args[0]
+        let child = self.first_child().unwrap();
+        child
             .verify_n_children("relative locktime", 0..=0)
             .map_err(ParseError::Tree)?;
-        parse_num(self.args[0].name)
+        parse_num(child.name())
             .map_err(ParseError::Num)
             .and_then(|n| RelLockTime::from_consensus(n).map_err(ParseError::RelativeLockTime))
     }
@@ -228,7 +385,7 @@ impl<'a> Tree<'a> {
     {
         self.verify_n_children(description, 0..=0)
             .map_err(ParseError::Tree)?;
-        T::from_str(self.name).map_err(ParseError::box_from_str)
+        T::from_str(self.name()).map_err(ParseError::box_from_str)
     }
 
     /// Check that a tree node has exactly one child, which is a terminal.
@@ -248,7 +405,9 @@ impl<'a> Tree<'a> {
     {
         self.verify_n_children(description, 1..=1)
             .map_err(ParseError::Tree)?;
-        self.args[0].verify_terminal(inner_description)
+        self.first_child()
+            .unwrap()
+            .verify_terminal(inner_description)
     }
 
     /// Check that a tree node has exactly two children.
@@ -257,12 +416,11 @@ impl<'a> Tree<'a> {
     ///
     /// The `description` argument is only used to populate the error return,
     /// and is not validated in any way.
-    pub fn verify_binary(
-        &self,
-        description: &'static str,
-    ) -> Result<(&Self, &Self), ParseTreeError> {
+    pub fn verify_binary(&self, description: &'static str) -> Result<(Self, Self), ParseTreeError> {
         self.verify_n_children(description, 2..=2)?;
-        Ok((&self.args[0], &self.args[1]))
+        let first_child = self.first_child().unwrap();
+        let second_child = first_child.right_sibling().unwrap();
+        Ok((first_child, second_child))
     }
 
     /// Parses an expression tree as a threshold (a term with at least one child,
@@ -279,11 +437,11 @@ impl<'a> Tree<'a> {
     /// and be able to return multiple error types.)
     pub fn verify_threshold<
         const MAX: usize,
-        F: FnMut(&Self) -> Result<T, E>,
+        F: FnMut(Self) -> Result<T, E>,
         T,
         E: From<ParseThresholdError>,
     >(
-        &self,
+        &'s self,
         mut map_child: F,
     ) -> Result<Threshold<T, MAX>, E> {
         let mut child_iter = self.children();
@@ -303,26 +461,59 @@ impl<'a> Tree<'a> {
             .and_then(|thresh| thresh.translate_by_index(|_| map_child(child_iter.next().unwrap())))
     }
 
+    /// Returns an iterator over the nodes of the tree, in pre-order.
+    ///
+    /// Constructing the iterator takes O(depth) time.
+    pub fn pre_order_iter(&'s self) -> PreOrderIter<'s> {
+        PreOrderIter { nodes: self.nodes, inner: self.index..=self.rightmost_descendant_idx() }
+    }
+
+    /// Returns an iterator over the nodes of the tree, in right-to-left post-order.
+    pub fn rtl_post_order_iter(&'s self) -> core::iter::Rev<PreOrderIter<'s>> {
+        self.pre_order_iter().rev()
+    }
+
     /// Check that a tree has no curly-brace children in it.
     pub fn verify_no_curly_braces(&self) -> Result<(), ParseTreeError> {
-        for tree in self.pre_order_iter() {
-            if tree.parens == Parens::Curly {
-                return Err(ParseTreeError::IllegalCurlyBrace { pos: tree.children_pos });
+        for node in self.rtl_post_order_iter() {
+            if node.parens() == Parens::Curly {
+                return Err(ParseTreeError::IllegalCurlyBrace { pos: node.children_pos() });
             }
         }
         Ok(())
+    }
+}
+
+#[derive(Debug, PartialEq, Eq)]
+/// A parsed expression tree. See module-level documentation for syntax.
+pub struct Tree<'s> {
+    /// The nodes, stored in pre-order.
+    nodes: Vec<TreeNode<'s>>,
+}
+
+impl<'a> Tree<'a> {
+    /// Returns the root node of the tree, or `None` if the tree is empty.
+    pub fn root(&'a self) -> TreeIterItem<'a> {
+        assert_ne!(
+            self.nodes.len(),
+            0,
+            "trees cannot be empty; the empty string parses as a single root with empty name"
+        );
+        TreeIterItem { nodes: &self.nodes, index: 0 }
     }
 
     /// Check that a string is a well-formed expression string, with optional
     /// checksum.
     ///
-    /// Returns the string with the checksum removed and its tree depth.
-    fn parse_pre_check(s: &str) -> Result<(&str, usize), ParseTreeError> {
+    /// Returns the string with the checksum removed, the maximum depth, and the
+    /// number of nodes in the tree.
+    fn parse_pre_check(s: &str) -> Result<(&str, usize, usize), ParseTreeError> {
         // First, scan through string to make sure it is well-formed.
         // Do ASCII/checksum check first; after this we can use .bytes().enumerate() rather
         // than .char_indices(), which is *significantly* faster.
         let s = verify_checksum(s)?;
 
+        let mut n_nodes = 1;
         let mut max_depth = 0;
         let mut open_paren_stack = Vec::with_capacity(128);
         for (pos, ch) in s.bytes().enumerate() {
@@ -380,9 +571,15 @@ impl<'a> Tree<'a> {
                     // now.
                     return Err(ParseTreeError::UnmatchedCloseParen { ch: ch.into(), pos });
                 }
-            } else if ch == b',' && open_paren_stack.is_empty() {
-                // We consider commas outside of the tree to be "trailing characters"
-                return Err(ParseTreeError::TrailingCharacter { ch: ch.into(), pos });
+
+                n_nodes += 1;
+            } else if ch == b',' {
+                if open_paren_stack.is_empty() {
+                    // We consider commas outside of the tree to be "trailing characters"
+                    return Err(ParseTreeError::TrailingCharacter { ch: ch.into(), pos });
+                }
+
+                n_nodes += 1;
             }
         }
         // Catch "early end of string"
@@ -399,7 +596,7 @@ impl<'a> Tree<'a> {
             });
         }
 
-        Ok((s, max_depth))
+        Ok((s, max_depth, n_nodes))
     }
 
     /// Parses a tree from a string
@@ -411,61 +608,73 @@ impl<'a> Tree<'a> {
     }
 
     fn from_str_inner(s: &'a str) -> Result<Self, ParseTreeError> {
-        // First, scan through string to make sure it is well-formed.
-        let (s, max_depth) = Self::parse_pre_check(s)?;
-
-        // Now, knowing it is sane and well-formed, we can easily parse it backward,
-        // which will yield a post-order right-to-left iterator of its nodes.
-        let mut stack = Vec::with_capacity(max_depth);
-        let mut children_parens: Option<(Vec<_>, usize, Parens)> = None;
-        let mut node_name_end = s.len();
-        for (pos, ch) in s.bytes().enumerate().rev() {
-            if ch == b')' || ch == b'}' {
-                stack.push(vec![]);
-                node_name_end = pos;
-            } else if ch == b',' {
-                let (mut args, children_pos, parens) =
-                    children_parens
-                        .take()
-                        .unwrap_or((vec![], node_name_end, Parens::None));
-                args.reverse();
-
-                let top = stack.last_mut().unwrap();
-                let new_tree =
-                    Tree { name: &s[pos + 1..node_name_end], children_pos, parens, args };
-                top.push(new_tree);
-                node_name_end = pos;
-            } else if ch == b'(' || ch == b'{' {
-                let (mut args, children_pos, parens) =
-                    children_parens
-                        .take()
-                        .unwrap_or((vec![], node_name_end, Parens::None));
-                args.reverse();
-
-                let mut top = stack.pop().unwrap();
-                let new_tree =
-                    Tree { name: &s[pos + 1..node_name_end], children_pos, parens, args };
-                top.push(new_tree);
-                children_parens = Some((
-                    top,
-                    pos,
-                    match ch {
-                        b'(' => Parens::Round,
-                        b'{' => Parens::Curly,
-                        _ => unreachable!(),
-                    },
-                ));
-                node_name_end = pos;
+        fn new_node<'a>(nodes: &mut [TreeNode<'a>], stack: &[usize], pos: usize) -> TreeNode<'a> {
+            let parent_idx = stack.last().copied();
+            if let Some(idx) = parent_idx {
+                nodes[idx].n_children += 1;
+                nodes[idx].last_child_idx = Some(nodes.len());
             }
+
+            let mut new = TreeNode::null(nodes.len());
+            new.name_pos = pos;
+            new.parent_idx = parent_idx;
+            new
         }
 
-        assert_eq!(stack.len(), 0);
-        let (mut args, children_pos, parens) =
-            children_parens
-                .take()
-                .unwrap_or((vec![], node_name_end, Parens::None));
-        args.reverse();
-        Ok(Tree { name: &s[..node_name_end], children_pos, parens, args })
+        // First, scan through string to make sure it is well-formed.
+        let (s, max_depth, n_nodes) = Self::parse_pre_check(s)?;
+
+        let mut nodes = Vec::with_capacity(n_nodes);
+
+        // Now, knowing it is sane and well-formed, we can easily parse it forward,
+        // as the string serialization lists all the nodes in pre-order.
+        let mut parent_stack = Vec::with_capacity(max_depth);
+        let mut current_node = Some(TreeNode::null(0));
+        for (pos, ch) in s.bytes().enumerate() {
+            if ch == b'(' || ch == b'{' {
+                let mut current = current_node.expect("'(' only occurs after a node name");
+                current.name = &s[current.name_pos..pos];
+                current.parens = match ch {
+                    b'(' => Parens::Round,
+                    b'{' => Parens::Curly,
+                    _ => unreachable!(),
+                };
+                parent_stack.push(nodes.len());
+                nodes.push(current);
+
+                current_node = Some(new_node(&mut nodes, &parent_stack, pos + 1));
+            } else if ch == b',' {
+                if let Some(mut current) = current_node {
+                    current.name = &s[current.name_pos..pos];
+                    nodes.push(current);
+                }
+
+                if let Some(last_sib_idx) =
+                    parent_stack.last().and_then(|n| nodes[*n].last_child_idx)
+                {
+                    nodes[last_sib_idx].right_sibling_idx = Some(nodes.len());
+                }
+                current_node = Some(new_node(&mut nodes, &parent_stack, pos + 1));
+            } else if ch == b')' || ch == b'}' {
+                if let Some(mut current) = current_node {
+                    current.name = &s[current.name_pos..pos];
+                    nodes.push(current);
+                }
+
+                current_node = None;
+                parent_stack.pop();
+            }
+        }
+        if let Some(mut current) = current_node {
+            current.name = &s[current.name_pos..];
+            nodes.push(current);
+        }
+
+        assert_eq!(parent_stack.capacity(), max_depth);
+        assert_eq!(nodes.capacity(), n_nodes);
+        assert_eq!(nodes.len(), nodes.capacity());
+
+        Ok(Tree { nodes })
     }
 }
 
@@ -488,29 +697,76 @@ mod tests {
     use super::*;
     use crate::ParseError;
 
-    /// Test functions to manually build trees
-    fn leaf(name: &str) -> Tree {
-        Tree { name, parens: Parens::None, children_pos: name.len(), args: vec![] }
+    struct NodeBuilder<'a> {
+        inner: Vec<TreeNode<'a>>,
+        sibling_stack: Vec<Option<usize>>,
+        parent_stack: Vec<usize>,
+        str_idx: usize,
     }
 
-    fn paren_node<'a>(name: &'a str, mut args: Vec<Tree<'a>>) -> Tree<'a> {
-        let mut offset = name.len() + 1; // +1 for open paren
-        for arg in &mut args {
-            arg.children_pos += offset;
-            offset += arg.name.len() + 1; // +1 for comma
+    impl<'a> NodeBuilder<'a> {
+        fn new() -> Self {
+            NodeBuilder {
+                inner: vec![],
+                sibling_stack: vec![None],
+                parent_stack: vec![],
+                str_idx: 0,
+            }
         }
 
-        Tree { name, parens: Parens::Round, children_pos: name.len(), args }
-    }
+        fn new_node_internal(&mut self, name: &'a str) -> TreeNode<'a> {
+            let mut new = TreeNode::null(self.inner.len());
+            if let Some(idx) = self.parent_stack.last().copied() {
+                self.inner[idx].n_children += 1;
+                self.inner[idx].last_child_idx = Some(self.inner.len());
+                new.parent_idx = Some(idx);
+            }
+            if let Some(idx) = self.sibling_stack.last().unwrap() {
+                self.inner[*idx].right_sibling_idx = Some(self.inner.len());
+                self.str_idx += 1;
+            }
+            new.name = name;
+            new.name_pos = self.str_idx;
 
-    fn brace_node<'a>(name: &'a str, mut args: Vec<Tree<'a>>) -> Tree<'a> {
-        let mut offset = name.len() + 1; // +1 for open paren
-        for arg in &mut args {
-            arg.children_pos += offset;
-            offset += arg.name.len() + 1; // +1 for comma
+            *self.sibling_stack.last_mut().unwrap() = Some(self.inner.len());
+            self.str_idx += name.len();
+            new
         }
 
-        Tree { name, parens: Parens::Curly, children_pos: name.len(), args }
+        fn leaf(mut self, name: &'a str) -> Self {
+            let new = self.new_node_internal(name);
+
+            self.inner.push(new);
+            self
+        }
+
+        fn open(mut self, name: &'a str, paren: char) -> Self {
+            let mut new = self.new_node_internal(name);
+
+            new.parens = match paren {
+                '(' => Parens::Round,
+                '{' => Parens::Curly,
+                _ => panic!(),
+            };
+            self.str_idx += 1;
+
+            self.parent_stack.push(self.inner.len());
+            self.sibling_stack.push(None);
+            self.inner.push(new);
+            self
+        }
+
+        fn close(mut self) -> Self {
+            self.str_idx += 1;
+            self.parent_stack.pop();
+            self.sibling_stack.pop();
+            self
+        }
+
+        fn into_tree(self) -> Tree<'a> {
+            assert_eq!(self.parent_stack.len(), 0);
+            Tree { nodes: self.inner }
+        }
     }
 
     #[test]
@@ -525,7 +781,10 @@ mod tests {
 
     #[test]
     fn parse_tree_basic() {
-        assert_eq!(Tree::from_str("thresh").unwrap(), leaf("thresh"));
+        assert_eq!(
+            Tree::from_str("thresh").unwrap(),
+            NodeBuilder::new().leaf("thresh").into_tree()
+        );
 
         assert!(matches!(
             Tree::from_str("thresh,").unwrap_err(),
@@ -542,7 +801,14 @@ mod tests {
             Error::Parse(ParseError::Tree(ParseTreeError::TrailingCharacter { ch: 't', pos: 8 })),
         ));
 
-        assert_eq!(Tree::from_str("thresh()").unwrap(), paren_node("thresh", vec![leaf("")]));
+        assert_eq!(
+            Tree::from_str("thresh()").unwrap(),
+            NodeBuilder::new()
+                .open("thresh", '(')
+                .leaf("")
+                .close()
+                .into_tree()
+        );
 
         assert!(matches!(
             Tree::from_str("thresh(a()b)"),
@@ -612,7 +878,14 @@ mod tests {
     fn parse_tree_taproot() {
         assert_eq!(
             Tree::from_str("a{b(c),d}").unwrap(),
-            brace_node("a", vec![paren_node("b", vec![leaf("c")]), leaf("d")]),
+            NodeBuilder::new()
+                .open("a", '{')
+                .open("b", '(')
+                .leaf("c")
+                .close()
+                .leaf("d")
+                .close()
+                .into_tree()
         );
     }
 
@@ -626,16 +899,18 @@ mod tests {
 
         assert_eq!(
             Tree::from_str(&desc).unwrap(),
-            paren_node(
-                "wsh",
-                vec![paren_node(
-                    "t:or_c",
-                    vec![
-                        paren_node("pk", vec![leaf(keys[0])]),
-                        paren_node("v:pkh", vec![leaf(keys[1])]),
-                    ]
-                )]
-            ),
+            NodeBuilder::new()
+                .open("wsh", '(')
+                .open("t:or_c", '(')
+                .open("pk", '(')
+                .leaf(keys[0])
+                .close()
+                .open("v:pkh", '(')
+                .leaf(keys[1])
+                .close()
+                .close()
+                .close()
+                .into_tree()
         );
     }
 }

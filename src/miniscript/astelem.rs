@@ -18,24 +18,26 @@ use crate::util::MsKeyBuilder;
 use crate::{expression, Error, FromStrKey, Miniscript, MiniscriptKey, Terminal, ToPublicKey};
 
 impl<Pk: FromStrKey, Ctx: ScriptContext> crate::expression::FromTree for Arc<Terminal<Pk, Ctx>> {
-    fn from_tree(top: &expression::Tree) -> Result<Arc<Terminal<Pk, Ctx>>, Error> {
-        Ok(Arc::new(expression::FromTree::from_tree(top)?))
+    fn from_tree(root: expression::TreeIterItem) -> Result<Arc<Terminal<Pk, Ctx>>, Error> {
+        Ok(Arc::new(expression::FromTree::from_tree(root)?))
     }
 }
 
 impl<Pk: FromStrKey, Ctx: ScriptContext> crate::expression::FromTree for Terminal<Pk, Ctx> {
-    fn from_tree(top: &expression::Tree) -> Result<Terminal<Pk, Ctx>, Error> {
-        let binary =
-            |node: &expression::Tree, name, termfn: fn(_, _) -> Self| -> Result<Self, Error> {
-                node.verify_binary(name)
-                    .map_err(From::from)
-                    .map_err(Error::Parse)
-                    .and_then(|(x, y)| {
-                        let x = Arc::<Miniscript<Pk, Ctx>>::from_tree(x)?;
-                        let y = Arc::<Miniscript<Pk, Ctx>>::from_tree(y)?;
-                        Ok(termfn(x, y))
-                    })
-            };
+    fn from_tree(top: expression::TreeIterItem) -> Result<Terminal<Pk, Ctx>, Error> {
+        let binary = |node: expression::TreeIterItem,
+                      name,
+                      termfn: fn(_, _) -> Self|
+         -> Result<Self, Error> {
+            node.verify_binary(name)
+                .map_err(From::from)
+                .map_err(Error::Parse)
+                .and_then(|(x, y)| {
+                    let x = Arc::<Miniscript<Pk, Ctx>>::from_tree(x)?;
+                    let y = Arc::<Miniscript<Pk, Ctx>>::from_tree(y)?;
+                    Ok(termfn(x, y))
+                })
+        };
 
         let (frag_wrap, frag_name) = top
             .name_separated(':')
