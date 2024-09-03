@@ -83,4 +83,22 @@ impl<Pk: MiniscriptKey, C> Inner<Pk, C> {
             Inner::Thresh(thresh) => Ok(Inner::Thresh(thresh)),
         }
     }
+
+    /// Returns a text representation of the variant.
+    pub fn fragment_name(&self) -> &'static str {
+        match self {
+            Inner::Unsatisfiable => "UNSATISFIABLE",
+            Inner::Trivial => "TRIVIAL",
+            Inner::Key(..) => "pk",
+            Inner::Sha256(..) => "sha256",
+            Inner::Hash256(..) => "hash256",
+            Inner::Ripemd160(..) => "ripemd160",
+            Inner::Hash160(..) => "hash160",
+            Inner::Older(..) => "older",
+            Inner::After(..) => "after",
+            Inner::And(..) => "and",
+            Inner::Or(..) => "or",
+            Inner::Thresh(..) => "thresh",
+        }
+    }
 }

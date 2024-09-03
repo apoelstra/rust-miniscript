@@ -4,6 +4,7 @@
 //!
 
 mod inner;
+mod string;
 
 use core::{fmt, str};
 #[cfg(feature = "std")]
@@ -41,7 +42,7 @@ const MAX_COMPILATION_LEAVES: usize = 1024;
 ///
 /// Disjurnctions are annotated with satisfaction probabilities to assist
 /// the compiler.
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Policy2<Pk: MiniscriptKey> {
     inner: Inner<Pk, Arc<Self>>,
 }

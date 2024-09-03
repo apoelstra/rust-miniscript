@@ -15,7 +15,7 @@ use crate::prelude::*;
 use crate::sync::Arc;
 use crate::{
     expression, AbsLockTime, Error, ForEachKey, FromStrKey, MiniscriptKey, RelLockTime, Threshold,
-    Translator,
+    Translator, ParseTreeError, ParseError, ParseThresholdError,
 };
 
 /// Abstract policy which corresponds to the semantics of a miniscript and
@@ -362,16 +362,16 @@ impl<Pk: FromStrKey> expression::FromTree for Policy<Pk> {
 
                     // thresh(1) and thresh(n) are disallowed in semantic policies
                     if thresh.is_or() {
-                        return Err(Error::ParseThreshold(crate::ParseThresholdError::IllegalOr));
+                        return Err(Error::ParseThreshold(ParseThresholdError::IllegalOr));
                     }
                     if thresh.is_and() {
-                        return Err(Error::ParseThreshold(crate::ParseThresholdError::IllegalAnd));
+                        return Err(Error::ParseThreshold(ParseThresholdError::IllegalAnd));
                     }
 
                     Ok(Policy::Thresh(thresh))
                 }
                 x => {
-                    Err(Error::Parse(crate::ParseError::Tree(crate::ParseTreeError::UnknownName {
+                    Err(Error::Parse(ParseError::Tree(ParseTreeError::UnknownName {
                         name: x.to_owned(),
                     })))
                 }
