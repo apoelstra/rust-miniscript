@@ -56,7 +56,7 @@ mod private {
     pub use crate::miniscript::context::ScriptContext;
     use crate::miniscript::types;
     use crate::prelude::sync::Arc;
-    use crate::{Error, MiniscriptKey, Terminal, MAX_RECURSION_DEPTH};
+    use crate::{AbsLockTime, Error, MiniscriptKey, RelLockTime, Terminal, MAX_RECURSION_DEPTH};
 
     /// The top-level miniscript abstract syntax tree (AST).
     pub struct Miniscript<Pk: MiniscriptKey, Ctx: ScriptContext> {
@@ -156,6 +156,118 @@ mod private {
             ext: types::extra_props::ExtData::FALSE,
             phantom: PhantomData,
         };
+
+        /// The `pk` combinator, which is an alias for `c:pk_k`.
+        pub fn pk(pk: Pk) -> Self {
+            let inner = Arc::new(Self::pk_k(pk));
+            Self {
+                ty: types::Type::cast_check(inner.ty).unwrap(),
+                ext: types::extra_props::ExtData::cast_check(inner.ext),
+                node: Terminal::Check(inner),
+                phantom: PhantomData,
+            }
+        }
+
+        /// The `pkh` combinator, which is an alias for `c:pk_h`.
+        pub fn pkh(pk: Pk) -> Self {
+            let inner = Arc::new(Self::pk_h(pk));
+            Self {
+                ty: types::Type::cast_check(inner.ty).unwrap(),
+                ext: types::extra_props::ExtData::cast_check(inner.ext),
+                node: Terminal::Check(inner),
+                phantom: PhantomData,
+            }
+        }
+
+        /// The `pk_k` combinator.
+        pub fn pk_k(pk: Pk) -> Self {
+            Self {
+                node: Terminal::PkK(pk),
+                ty: types::Type::pk_k(),
+                ext: types::extra_props::ExtData::pk_k::<Ctx>(),
+                phantom: PhantomData,
+            }
+        }
+
+        /// The `pk_h` combinator.
+        pub fn pk_h(pk: Pk) -> Self {
+            Self {
+                node: Terminal::PkH(pk),
+                ty: types::Type::pk_h(),
+                ext: types::extra_props::ExtData::pk_h::<Ctx>(),
+                phantom: PhantomData,
+            }
+        }
+
+        /// The `expr_raw_pkh` combinator.
+        pub fn expr_raw_pkh(hash: bitcoin::hashes::hash160::Hash) -> Self {
+            Self {
+                node: Terminal::RawPkH(hash),
+                ty: types::Type::pk_h(),
+                ext: types::extra_props::ExtData::pk_h::<Ctx>(),
+                phantom: PhantomData,
+            }
+        }
+
+        /// The `after` combinator.
+        pub fn after(time: AbsLockTime) -> Self {
+            Self {
+                node: Terminal::After(time),
+                ty: types::Type::time(),
+                ext: types::extra_props::ExtData::after(time),
+                phantom: PhantomData,
+            }
+        }
+
+        /// The `older` combinator.
+        pub fn older(time: RelLockTime) -> Self {
+            Self {
+                node: Terminal::Older(time),
+                ty: types::Type::time(),
+                ext: types::extra_props::ExtData::older(time),
+                phantom: PhantomData,
+            }
+        }
+
+        /// The `sha256` combinator.
+        pub const fn sha256(hash: Pk::Sha256) -> Self {
+            Self {
+                node: Terminal::Sha256(hash),
+                ty: types::Type::hash(),
+                ext: types::extra_props::ExtData::sha256(),
+                phantom: PhantomData,
+            }
+        }
+
+        /// The `hash256` combinator.
+        pub const fn hash256(hash: Pk::Hash256) -> Self {
+            Self {
+                node: Terminal::Hash256(hash),
+                ty: types::Type::hash(),
+                ext: types::extra_props::ExtData::hash256(),
+                phantom: PhantomData,
+            }
+        }
+
+        /// The `ripemd160` combinator.
+        pub const fn ripemd160(hash: Pk::Ripemd160) -> Self {
+            Self {
+                node: Terminal::Ripemd160(hash),
+                ty: types::Type::hash(),
+                ext: types::extra_props::ExtData::ripemd160(),
+                phantom: PhantomData,
+            }
+        }
+
+        /// The `hash160` combinator.
+        pub const fn hash160(hash: Pk::Hash160) -> Self {
+            Self {
+                node: Terminal::Hash160(hash),
+                ty: types::Type::hash(),
+                ext: types::extra_props::ExtData::hash160(),
+                phantom: PhantomData,
+            }
+        }
 
         /// Add type information(Type and Extdata) to Miniscript based on
         /// `AstElem` fragment. Dependent on display and clone because of Error
