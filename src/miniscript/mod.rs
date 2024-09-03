@@ -163,7 +163,7 @@ mod private {
         pub fn from_ast(t: Terminal<Pk, Ctx>) -> Result<Miniscript<Pk, Ctx>, Error> {
             let res = Miniscript {
                 ty: Type::type_check(&t)?,
-                ext: ExtData::type_check(&t)?,
+                ext: ExtData::type_check(&t),
                 node: t,
                 phantom: PhantomData,
             };

@@ -6,7 +6,7 @@
 use core::cmp;
 use core::iter::once;
 
-use super::{Error, ScriptContext};
+use super::ScriptContext;
 use crate::miniscript::context::SigType;
 use crate::prelude::*;
 use crate::{script_num_size, AbsLockTime, MiniscriptKey, RelLockTime, Terminal};
@@ -924,7 +924,7 @@ impl ExtData {
 
     /// Compute the type of a fragment assuming all the children of
     /// Miniscript have been computed already.
-    pub fn type_check<Pk, Ctx>(fragment: &Terminal<Pk, Ctx>) -> Result<Self, Error>
+    pub fn type_check<Pk, Ctx>(fragment: &Terminal<Pk, Ctx>) -> Self
     where
         Ctx: ScriptContext,
         Pk: MiniscriptKey,
@@ -990,7 +990,7 @@ impl ExtData {
             }
         };
         ret.sanity_checks();
-        Ok(ret)
+        ret
     }
 }
 

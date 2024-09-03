@@ -540,7 +540,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
         //Types and ExtData are already cached and stored in children. So, we can
         //type_check without cache. For Compiler extra data, we supply a cache.
         let ty = types::Type::type_check(&ast)?;
-        let ext = types::ExtData::type_check(&ast)?;
+        let ext = types::ExtData::type_check(&ast);
         let comp_ext_data = CompilerExtData::type_check_with_child(&ast, lookup_ext);
         Ok(AstElemExt {
             ms: Arc::new(Miniscript::from_components_unchecked(ast, ty, ext)),
@@ -563,7 +563,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
         //Types and ExtData are already cached and stored in children. So, we can
         //type_check without cache. For Compiler extra data, we supply a cache.
         let ty = types::Type::type_check(&ast)?;
-        let ext = types::ExtData::type_check(&ast)?;
+        let ext = types::ExtData::type_check(&ast);
         let comp_ext_data = CompilerExtData::type_check_with_child(&ast, lookup_ext);
         Ok(AstElemExt {
             ms: Arc::new(Miniscript::from_components_unchecked(ast, ty, ext)),
