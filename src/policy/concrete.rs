@@ -843,100 +843,112 @@ impl<Pk: FromStrKey> str::FromStr for Policy<Pk> {
 
 serde_string_impl_pk!(Policy, "a miniscript concrete policy");
 
-impl<Pk: FromStrKey> Policy<Pk> {
-    /// Helper function for `from_tree` to parse subexpressions with
-    /// names of the form x@y
-    fn from_tree_prob(
-        top: expression::TreeIterItem,
-        allow_prob: bool,
-    ) -> Result<(usize, Policy<Pk>), Error> {
-        // When 'allow_prob' is true we parse '@' signs out of node names.
-        let (frag_prob, frag_name) = if allow_prob {
-            top.name_separated('@')
-                .map_err(From::from)
-                .map_err(Error::Parse)?
-        } else {
-            (None, top.name())
-        };
-
-        let frag_prob = match frag_prob {
-            None => 1,
-            Some(s) => expression::parse_num(s)
-                .map_err(From::from)
-                .map_err(Error::Parse)? as usize,
-        };
-
-        match frag_name {
-            "UNSATISFIABLE" => {
-                top.verify_n_children("UNSATISFIABLE", 0..=0)
-                    .map_err(From::from)
-                    .map_err(Error::Parse)?;
-                Ok(Policy::Unsatisfiable)
-            }
-            "TRIVIAL" => {
-                top.verify_n_children("TRIVIAL", 0..=0)
-                    .map_err(From::from)
-                    .map_err(Error::Parse)?;
-                Ok(Policy::Trivial)
-            }
-            "pk" => top
-                .verify_terminal_parent("pk", "public key")
-                .map(Policy::Key)
-                .map_err(Error::Parse),
-            "after" => top.verify_after().map_err(Error::Parse).map(Policy::After),
-            "older" => top.verify_older().map_err(Error::Parse).map(Policy::Older),
-            "sha256" => top
-                .verify_terminal_parent("sha256", "hash")
-                .map(Policy::Sha256)
-                .map_err(Error::Parse),
-            "hash256" => top
-                .verify_terminal_parent("hash256", "hash")
-                .map(Policy::Hash256)
-                .map_err(Error::Parse),
-            "ripemd160" => top
-                .verify_terminal_parent("ripemd160", "hash")
-                .map(Policy::Ripemd160)
-                .map_err(Error::Parse),
-            "hash160" => top
-                .verify_terminal_parent("hash160", "hash")
-                .map(Policy::Hash160)
-                .map_err(Error::Parse),
-            "and" => {
-                top.verify_n_children("and", 2..=2)
-                    .map_err(From::from)
-                    .map_err(Error::Parse)?;
-                let subs = top
-                    .children()
-                    .map(|arg| Self::from_tree(arg).map(Arc::new))
-                    .collect::<Result<_, Error>>()?;
-                Ok(Policy::And(subs))
-            }
-            "or" => {
-                top.verify_n_children("or", 2..=2)
-                    .map_err(From::from)
-                    .map_err(Error::Parse)?;
-                let subs = top
-                    .children()
-                    .map(|arg| {
-                        Self::from_tree_prob(arg, true).map(|(prob, sub)| (prob, Arc::new(sub)))
-                    })
-                    .collect::<Result<_, Error>>()?;
-                Ok(Policy::Or(subs))
-            }
-            "thresh" => top
-                .verify_threshold(|sub| Self::from_tree(sub).map(Arc::new))
-                .map(Self::Thresh),
-            x => Err(Error::Parse(crate::ParseError::Tree(crate::ParseTreeError::UnknownName {
-                name: x.to_owned(),
-            }))),
-        }
-        .map(|res| (frag_prob, res))
-    }
-}
-
 impl<Pk: FromStrKey> expression::FromTree for Policy<Pk> {
     fn from_tree(root: expression::TreeIterItem) -> Result<Policy<Pk>, Error> {
-        Policy::from_tree_prob(root, false).map(|(_, result)| result)
+        root.verify_no_curly_braces()
+            .map_err(From::from)
+            .map_err(Error::Parse)?;
+
+        let mut stack = Vec::<(usize, _)>::with_capacity(128);
+        for node in root.pre_order_iter().rev() {
+            let allow_prob;
+            // Before doing anything else, check if this is the inner value of a terminal.
+            // In that case, just skip the node. Conveniently, there are no combinators
+            // in policy that have a single child that these might be confused with (we
+            // require and, or and thresholds to all have >1 child).
+            if let Some(parent) = node.parent() {
+                if parent.n_children() == 1 {
+                    continue;
+                }
+                let (_, parent_name) = parent
+                    .name_separated('@')
+                    .map_err(From::from)
+                    .map_err(Error::Parse)?;
+                if node.is_first_child() && parent_name == "thresh" {
+                    continue;
+                }
+                allow_prob = parent_name == "or";
+            } else {
+                allow_prob = false;
+            }
+
+            // When 'allow_prob' is true we parse '@' signs out of node names.
+            let (frag_prob, frag_name) = if allow_prob {
+                node.name_separated('@')
+                    .map_err(From::from)
+                    .map_err(Error::Parse)?
+            } else {
+                (None, node.name())
+            };
+
+            let frag_prob = match frag_prob {
+                None => 1,
+                Some(s) => expression::parse_num(s)
+                    .map_err(From::from)
+                    .map_err(Error::Parse)? as usize,
+            };
+
+            let new =
+                match frag_name {
+                    "UNSATISFIABLE" => {
+                        node.verify_n_children("UNSATISFIABLE", 0..=0)
+                            .map_err(From::from)
+                            .map_err(Error::Parse)?;
+                        Ok(Policy::Unsatisfiable)
+                    }
+                    "TRIVIAL" => {
+                        node.verify_n_children("TRIVIAL", 0..=0)
+                            .map_err(From::from)
+                            .map_err(Error::Parse)?;
+                        Ok(Policy::Trivial)
+                    }
+                    "pk" => node
+                        .verify_terminal_parent("pk", "public key")
+                        .map(Policy::Key)
+                        .map_err(Error::Parse),
+                    "after" => node.verify_after().map_err(Error::Parse).map(Policy::After),
+                    "older" => node.verify_older().map_err(Error::Parse).map(Policy::Older),
+                    "sha256" => node
+                        .verify_terminal_parent("sha256", "hash")
+                        .map(Policy::Sha256)
+                        .map_err(Error::Parse),
+                    "hash256" => node
+                        .verify_terminal_parent("hash256", "hash")
+                        .map(Policy::Hash256)
+                        .map_err(Error::Parse),
+                    "ripemd160" => node
+                        .verify_terminal_parent("ripemd160", "hash")
+                        .map(Policy::Ripemd160)
+                        .map_err(Error::Parse),
+                    "hash160" => node
+                        .verify_terminal_parent("hash160", "hash")
+                        .map(Policy::Hash160)
+                        .map_err(Error::Parse),
+                    "and" => {
+                        node.verify_n_children("and", 2..=2)
+                            .map_err(From::from)
+                            .map_err(Error::Parse)?;
+                        Ok(Policy::And(vec![stack.pop().unwrap().1, stack.pop().unwrap().1]))
+                    }
+                    "or" => {
+                        node.verify_n_children("or", 2..=2)
+                            .map_err(From::from)
+                            .map_err(Error::Parse)?;
+                        Ok(Policy::Or(vec![stack.pop().unwrap(), stack.pop().unwrap()]))
+                    }
+                    "thresh" => node
+                        .verify_threshold(|_| Ok(stack.pop().unwrap().1))
+                        .map(Self::Thresh),
+                    x => Err(Error::Parse(crate::ParseError::Tree(
+                        crate::ParseTreeError::UnknownName { name: x.to_owned() },
+                    ))),
+                }?;
+
+            stack.push((frag_prob, Arc::new(new)));
+        }
+
+        assert_eq!(stack.len(), 1);
+        Ok(Arc::try_unwrap(stack.pop().unwrap().1).unwrap())
     }
 }
 
