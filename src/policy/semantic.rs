@@ -284,79 +284,104 @@ impl<Pk: FromStrKey> str::FromStr for Policy<Pk> {
 serde_string_impl_pk!(Policy, "a miniscript semantic policy");
 
 impl<Pk: FromStrKey> expression::FromTree for Policy<Pk> {
-    fn from_tree(top: expression::TreeIterItem) -> Result<Policy<Pk>, Error> {
-        match top.name() {
-            "UNSATISFIABLE" => {
-                top.verify_n_children("UNSATISFIABLE", 0..=0)
-                    .map_err(From::from)
-                    .map_err(Error::Parse)?;
-                Ok(Policy::Unsatisfiable)
-            }
-            "TRIVIAL" => {
-                top.verify_n_children("TRIVIAL", 0..=0)
-                    .map_err(From::from)
-                    .map_err(Error::Parse)?;
-                Ok(Policy::Trivial)
-            }
-            "pk" => top
-                .verify_terminal_parent("pk", "public key")
-                .map(Policy::Key)
-                .map_err(Error::Parse),
-            "after" => top.verify_after().map_err(Error::Parse).map(Policy::After),
-            "older" => top.verify_older().map_err(Error::Parse).map(Policy::Older),
-            "sha256" => top
-                .verify_terminal_parent("sha256", "hash")
-                .map(Policy::Sha256)
-                .map_err(Error::Parse),
-            "hash256" => top
-                .verify_terminal_parent("hash256", "hash")
-                .map(Policy::Hash256)
-                .map_err(Error::Parse),
-            "ripemd160" => top
-                .verify_terminal_parent("ripemd160", "hash")
-                .map(Policy::Ripemd160)
-                .map_err(Error::Parse),
-            "hash160" => top
-                .verify_terminal_parent("hash160", "hash")
-                .map(Policy::Hash160)
-                .map_err(Error::Parse),
-            "and" => {
-                top.verify_n_children("and", 2..)
-                    .map_err(From::from)
-                    .map_err(Error::Parse)?;
-                let subs = top
-                    .children()
-                    .map(|arg| Self::from_tree(arg).map(Arc::new))
-                    .collect::<Result<Vec<_>, Error>>()?;
-                Ok(Policy::Thresh(Threshold::new(subs.len(), subs).map_err(Error::Threshold)?))
-            }
-            "or" => {
-                top.verify_n_children("or", 2..)
-                    .map_err(From::from)
-                    .map_err(Error::Parse)?;
-                let subs = top
-                    .children()
-                    .map(|arg| Self::from_tree(arg).map(Arc::new))
-                    .collect::<Result<Vec<_>, Error>>()?;
-                Ok(Policy::Thresh(Threshold::new(1, subs).map_err(Error::Threshold)?))
-            }
-            "thresh" => {
-                let thresh = top.verify_threshold(|sub| Self::from_tree(sub).map(Arc::new))?;
+    fn from_tree(root: expression::TreeIterItem) -> Result<Policy<Pk>, Error> {
+        root.verify_no_curly_braces()
+            .map_err(From::from)
+            .map_err(Error::Parse)?;
 
-                // thresh(1) and thresh(n) are disallowed in semantic policies
-                if thresh.is_or() {
-                    return Err(Error::ParseThreshold(crate::ParseThresholdError::IllegalOr));
+        let mut stack = Vec::with_capacity(128);
+        for node in root.pre_order_iter().rev() {
+            // Before doing anything else, check if this is the inner value of a terminal.
+            // In that case, just skip the node. Conveniently, there are no combinators
+            // in policy that have a single child that these might be confused with (we
+            // require and, or and thresholds to all have >1 child).
+            if let Some(parent) = node.parent() {
+                if parent.n_children() == 1 {
+                    continue;
                 }
-                if thresh.is_and() {
-                    return Err(Error::ParseThreshold(crate::ParseThresholdError::IllegalAnd));
+                if node.is_first_child() && parent.name() == "thresh" {
+                    continue;
                 }
-
-                Ok(Policy::Thresh(thresh))
             }
-            x => Err(Error::Parse(crate::ParseError::Tree(crate::ParseTreeError::UnknownName {
-                name: x.to_owned(),
-            }))),
+
+            let new = match node.name() {
+                "UNSATISFIABLE" => {
+                    node.verify_n_children("UNSATISFIABLE", 0..=0)
+                        .map_err(From::from)
+                        .map_err(Error::Parse)?;
+                    Ok(Policy::Unsatisfiable)
+                }
+                "TRIVIAL" => {
+                    node.verify_n_children("TRIVIAL", 0..=0)
+                        .map_err(From::from)
+                        .map_err(Error::Parse)?;
+                    Ok(Policy::Trivial)
+                }
+                "pk" => node
+                    .verify_terminal_parent("pk", "public key")
+                    .map(Policy::Key)
+                    .map_err(Error::Parse),
+                "after" => node.verify_after().map_err(Error::Parse).map(Policy::After),
+                "older" => node.verify_older().map_err(Error::Parse).map(Policy::Older),
+                "sha256" => node
+                    .verify_terminal_parent("sha256", "hash")
+                    .map(Policy::Sha256)
+                    .map_err(Error::Parse),
+                "hash256" => node
+                    .verify_terminal_parent("hash256", "hash")
+                    .map(Policy::Hash256)
+                    .map_err(Error::Parse),
+                "ripemd160" => node
+                    .verify_terminal_parent("ripemd160", "hash")
+                    .map(Policy::Ripemd160)
+                    .map_err(Error::Parse),
+                "hash160" => node
+                    .verify_terminal_parent("hash160", "hash")
+                    .map(Policy::Hash160)
+                    .map_err(Error::Parse),
+                "and" => {
+                    node.verify_n_children("and", 2..)
+                        .map_err(From::from)
+                        .map_err(Error::Parse)?;
+
+                    let child_iter = (0..node.n_children()).map(|_| stack.pop().unwrap());
+                    let thresh = Threshold::from_iter(node.n_children(), child_iter)
+                        .map_err(Error::Threshold)?;
+                    Ok(Policy::Thresh(thresh))
+                }
+                "or" => {
+                    node.verify_n_children("or", 2..)
+                        .map_err(From::from)
+                        .map_err(Error::Parse)?;
+                    let child_iter = (0..node.n_children()).map(|_| stack.pop().unwrap());
+                    let thresh = Threshold::from_iter(1, child_iter).map_err(Error::Threshold)?;
+                    Ok(Policy::Thresh(thresh))
+                }
+                "thresh" => {
+                    let thresh = node.verify_threshold(|_| Ok::<_, Error>(stack.pop().unwrap()))?;
+
+                    // thresh(1) and thresh(n) are disallowed in semantic policies
+                    if thresh.is_or() {
+                        return Err(Error::ParseThreshold(crate::ParseThresholdError::IllegalOr));
+                    }
+                    if thresh.is_and() {
+                        return Err(Error::ParseThreshold(crate::ParseThresholdError::IllegalAnd));
+                    }
+
+                    Ok(Policy::Thresh(thresh))
+                }
+                x => {
+                    Err(Error::Parse(crate::ParseError::Tree(crate::ParseTreeError::UnknownName {
+                        name: x.to_owned(),
+                    })))
+                }
+            }?;
+
+            stack.push(Arc::new(new));
         }
+
+        assert_eq!(stack.len(), 1);
+        Ok(Arc::try_unwrap(stack.pop().unwrap()).unwrap())
     }
 }
 
