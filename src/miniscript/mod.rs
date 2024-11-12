@@ -40,6 +40,7 @@ use core::cmp;
 use sync::Arc;
 
 use self::lex::{lex, TokenIter};
+use crate::expression::{FromTree, TreeIterItem};
 pub use crate::miniscript::context::ScriptContext;
 use crate::miniscript::decode::Terminal;
 use crate::{
@@ -782,41 +783,6 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     }
 }
 
-/// Utility function used when parsing a script from an expression tree.
-///
-/// Once a Miniscript fragment has been parsed into a terminal, apply any
-/// wrappers that were included in its name.
-fn wrap_into_miniscript<Pk, Ctx>(
-    term: Terminal<Pk, Ctx>,
-    frag_wrap: &str,
-) -> Result<Miniscript<Pk, Ctx>, Error>
-where
-    Pk: MiniscriptKey,
-    Ctx: ScriptContext,
-{
-    let mut unwrapped = term;
-    for ch in frag_wrap.chars().rev() {
-        // Check whether the wrapper is valid under the current context
-        let ms = Miniscript::from_ast(unwrapped)?;
-        match ch {
-            'a' => unwrapped = Terminal::Alt(Arc::new(ms)),
-            's' => unwrapped = Terminal::Swap(Arc::new(ms)),
-            'c' => unwrapped = Terminal::Check(Arc::new(ms)),
-            'd' => unwrapped = Terminal::DupIf(Arc::new(ms)),
-            'v' => unwrapped = Terminal::Verify(Arc::new(ms)),
-            'j' => unwrapped = Terminal::NonZero(Arc::new(ms)),
-            'n' => unwrapped = Terminal::ZeroNotEqual(Arc::new(ms)),
-            't' => unwrapped = Terminal::AndV(Arc::new(ms), Arc::new(Miniscript::TRUE)),
-            'u' => unwrapped = Terminal::OrI(Arc::new(ms), Arc::new(Miniscript::FALSE)),
-            'l' => unwrapped = Terminal::OrI(Arc::new(Miniscript::FALSE), Arc::new(ms)),
-            x => return Err(Error::UnknownWrapper(x)),
-        }
-    }
-    // Check whether the unwrapped miniscript is valid under the current context
-    let ms = Miniscript::from_ast(unwrapped)?;
-    Ok(ms)
-}
-
 impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     /// Attempt to parse an insane(scripts don't clear sanity checks)
     /// from string into a Miniscript representation.
@@ -848,21 +814,203 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     }
 }
 
-impl<Pk: FromStrKey, Ctx: ScriptContext> crate::expression::FromTree for Arc<Miniscript<Pk, Ctx>> {
-    fn from_tree(root: expression::TreeIterItem) -> Result<Arc<Miniscript<Pk, Ctx>>, Error> {
-        Ok(Arc::new(expression::FromTree::from_tree(root)?))
+impl<Pk: FromStrKey, Ctx: ScriptContext> FromTree for Arc<Miniscript<Pk, Ctx>> {
+    fn from_tree(root: TreeIterItem) -> Result<Self, Error> {
+        Miniscript::from_tree(root).map(Arc::new)
     }
 }
 
-impl<Pk: FromStrKey, Ctx: ScriptContext> crate::expression::FromTree for Miniscript<Pk, Ctx> {
-    /// Parse an expression tree into a Miniscript. As a general rule, this
-    /// should not be called directly; rather go through the descriptor API.
-    fn from_tree(root: expression::TreeIterItem) -> Result<Miniscript<Pk, Ctx>, Error> {
+impl<Pk: FromStrKey, Ctx: ScriptContext> FromTree for Miniscript<Pk, Ctx> {
+    fn from_tree(root: TreeIterItem) -> Result<Self, Error> {
+        #[allow(clippy::type_complexity)]
+        fn binary<Pk: MiniscriptKey, Ctx: ScriptContext>(
+            node: expression::TreeIterItem,
+            stack: &mut Vec<Arc<Miniscript<Pk, Ctx>>>,
+            name: &'static str,
+            termfn: fn(Arc<Miniscript<Pk, Ctx>>, Arc<Miniscript<Pk, Ctx>>) -> Terminal<Pk, Ctx>,
+        ) -> Result<Miniscript<Pk, Ctx>, Error> {
+            node.verify_n_children(name, 2..=2)
+                .map_err(From::from)
+                .map_err(Error::Parse)?;
+            Miniscript::from_ast(termfn(stack.pop().unwrap(), stack.pop().unwrap()))
+        }
         root.verify_no_curly_braces()
             .map_err(From::from)
             .map_err(Error::Parse)?;
-        let inner: Terminal<Pk, Ctx> = expression::FromTree::from_tree(root)?;
-        Miniscript::from_ast(inner)
+
+        let mut stack = Vec::with_capacity(128);
+        for (n, node) in root.pre_order_iter().enumerate().rev() {
+            // Before doing anything else, check if this is the inner value of a terminal.
+            // In that case, just skip the node. Conveniently, there are no combinators
+            // in Miniscript that have a single child that these might be confused with.
+            // (Well, there are, but they're all serialized as wrappers.)
+            //
+            // We also skip all the children of multi/multi_a and the first child of thresh
+            // (which will be the k value, not a real child).
+            //
+            // We do not do this check on the root node, because its parent might be wsh or
+            // sh or something, and actually these ARE single-child combinators, but we don't
+            // want to skip their children.
+            if n > 0 && node.n_children() == 0 {
+                let parent = node.parent().unwrap();
+                if parent.n_children() == 1 {
+                    continue;
+                }
+
+                let (_, parent_name) = parent
+                    .name_separated(':')
+                    .map_err(From::from)
+                    .map_err(Error::Parse)?;
+
+                if parent_name == "multi" || parent_name == "multi_a" {
+                    continue;
+                }
+                if parent_name == "thresh" && node.is_first_child() {
+                    continue;
+                }
+            }
+
+            let (frag_wrap, frag_name) = node
+                .name_separated(':')
+                .map_err(From::from)
+                .map_err(Error::Parse)?;
+
+            // "pk" and "pkh" are aliases for "c:pk_k" and "c:pk_h" respectively.
+            let new = match frag_name {
+                "expr_raw_pkh" => node
+                    .verify_terminal_parent("expr_raw_pkh", "public key hash")
+                    .map(Miniscript::expr_raw_pkh)
+                    .map_err(Error::Parse),
+                "pk" => node
+                    .verify_terminal_parent("pk", "public key")
+                    .map(Miniscript::pk)
+                    .map_err(Error::Parse),
+                "pkh" => node
+                    .verify_terminal_parent("pkh", "public key")
+                    .map(Miniscript::pkh)
+                    .map_err(Error::Parse),
+                "pk_k" => node
+                    .verify_terminal_parent("pk_k", "public key")
+                    .map(Miniscript::pk_k)
+                    .map_err(Error::Parse),
+                "pk_h" => node
+                    .verify_terminal_parent("pk_h", "public key")
+                    .map(Miniscript::pk_h)
+                    .map_err(Error::Parse),
+                "after" => node
+                    .verify_after()
+                    .map(Miniscript::after)
+                    .map_err(Error::Parse),
+                "older" => node
+                    .verify_older()
+                    .map(Miniscript::older)
+                    .map_err(Error::Parse),
+                "sha256" => node
+                    .verify_terminal_parent("sha256", "hash")
+                    .map(Miniscript::sha256)
+                    .map_err(Error::Parse),
+                "hash256" => node
+                    .verify_terminal_parent("hash256", "hash")
+                    .map(Miniscript::hash256)
+                    .map_err(Error::Parse),
+                "ripemd160" => node
+                    .verify_terminal_parent("ripemd160", "hash")
+                    .map(Miniscript::ripemd160)
+                    .map_err(Error::Parse),
+                "hash160" => node
+                    .verify_terminal_parent("hash160", "hash")
+                    .map(Miniscript::hash160)
+                    .map_err(Error::Parse),
+                "1" => {
+                    node.verify_n_children("1", 0..=0)
+                        .map_err(From::from)
+                        .map_err(Error::Parse)?;
+                    Ok(Miniscript::TRUE)
+                }
+                "0" => {
+                    node.verify_n_children("0", 0..=0)
+                        .map_err(From::from)
+                        .map_err(Error::Parse)?;
+                    Ok(Miniscript::FALSE)
+                }
+                "and_v" => binary(node, &mut stack, "and_v", Terminal::AndV),
+                "and_b" => binary(node, &mut stack, "and_b", Terminal::AndB),
+                "and_n" => binary(node, &mut stack, "and_n", |x, y| {
+                    Terminal::AndOr(x, y, Arc::new(Miniscript::FALSE))
+                }),
+                "andor" => {
+                    node.verify_n_children("andor", 3..=3)
+                        .map_err(From::from)
+                        .map_err(Error::Parse)?;
+                    Miniscript::from_ast(Terminal::AndOr(
+                        stack.pop().unwrap(),
+                        stack.pop().unwrap(),
+                        stack.pop().unwrap(),
+                    ))
+                }
+                "or_b" => binary(node, &mut stack, "or_b", Terminal::OrB),
+                "or_d" => binary(node, &mut stack, "or_d", Terminal::OrD),
+                "or_c" => binary(node, &mut stack, "or_c", Terminal::OrC),
+                "or_i" => binary(node, &mut stack, "or_i", Terminal::OrI),
+                "thresh" => node
+                    .verify_threshold(|_| Ok(stack.pop().unwrap()))
+                    .map(Terminal::Thresh)
+                    .and_then(Miniscript::from_ast),
+                "multi" => node
+                    .verify_threshold(|sub| sub.verify_terminal("public_key").map_err(Error::Parse))
+                    .map(Terminal::Multi)
+                    .and_then(Miniscript::from_ast),
+                "multi_a" => node
+                    .verify_threshold(|sub| sub.verify_terminal("public_key").map_err(Error::Parse))
+                    .map(Terminal::MultiA)
+                    .and_then(Miniscript::from_ast),
+                x => {
+                    Err(Error::Parse(crate::ParseError::Tree(crate::ParseTreeError::UnknownName {
+                        name: x.to_owned(),
+                    })))
+                }
+            }?;
+
+            let mut new = Arc::new(new);
+            if let Some(frag_wrap) = frag_wrap {
+                // ":node()" is not valid syntax
+                if frag_wrap.is_empty() {
+                    return Err(Error::Parse(crate::ParseError::Tree(
+                        crate::ParseTreeError::UnknownName { name: node.name().to_owned() },
+                    )));
+                }
+
+                for ch in frag_wrap.bytes().rev() {
+                    let term = match ch {
+                        b'a' => Terminal::Alt(new),
+                        b's' => Terminal::Swap(new),
+                        b'c' => Terminal::Check(new),
+                        b'd' => Terminal::DupIf(new),
+                        b'v' => Terminal::Verify(new),
+                        b'j' => Terminal::NonZero(new),
+                        b'n' => Terminal::ZeroNotEqual(new),
+                        b't' => Terminal::AndV(new, Arc::new(Miniscript::TRUE)),
+                        b'u' => Terminal::OrI(new, Arc::new(Miniscript::FALSE)),
+                        b'l' => Terminal::OrI(Arc::new(Miniscript::FALSE), new),
+                        x => return Err(Error::UnknownWrapper(x.into())),
+                    };
+                    new = Arc::new(Miniscript::from_ast(term)?);
+                }
+            }
+
+            stack.push(new);
+        }
+
+        assert_eq!(stack.len(), 1);
+        let ret = stack.pop().unwrap();
+        // Iterate through every node to check global validity. It is definitely not sufficient
+        // to check only the root, since this will fail to notice illegal xonly keys at the
+        // leaves. But probably checking every single node is overkill. This may be worth
+        // optimizing.
+        for node in ret.pre_order_iter() {
+            Ctx::check_global_validity(node)?;
+        }
+        Ok(Arc::try_unwrap(ret).unwrap())
     }
 }
 
