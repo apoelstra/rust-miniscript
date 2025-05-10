@@ -1564,7 +1564,7 @@ mod tests {
     }
 
     fn x_only_no_checks_ms(ms: &str) -> Miniscript<BitcoinKey, NoChecks> {
-        let elem: Miniscript<bitcoin::key::XOnlyPublicKey, NoChecks> =
+        let elem: Miniscript<bitcoin::XOnlyPublicKey, NoChecks> =
             Miniscript::from_str_ext(ms, &ExtParams::allow_all()).unwrap();
         elem.to_no_checks_ms()
     }

@@ -39,9 +39,9 @@ use core::cmp;
 
 use sync::Arc;
 
+pub use self::context::ScriptContext;
 use self::lex::{lex, TokenIter};
 use crate::expression::{FromTree, TreeIterItem};
-pub use crate::miniscript::context::ScriptContext;
 use crate::miniscript::decode::Terminal;
 use crate::{
     expression, plan, Error, ForEachKey, FromStrKey, MiniscriptKey, ToPublicKey, Translator,
@@ -54,10 +54,13 @@ mod private {
 
     use super::limits::{MAX_PUBKEYS_IN_CHECKSIGADD, MAX_PUBKEYS_PER_MULTISIG};
     use super::types::{self, ExtData, Type};
+    use super::ScriptContext;
     use crate::iter::TreeLike as _;
-    pub use crate::miniscript::context::ScriptContext;
     use crate::prelude::sync::Arc;
-    use crate::{AbsLockTime, Error, MiniscriptKey, RelLockTime, Terminal, MAX_RECURSION_DEPTH};
+    use crate::{
+        AbsLockTime, Error, MiniscriptKey, RelLockTime, Terminal, ValidationError,
+        ValidationParams, MAX_RECURSION_DEPTH,
+    };
 
     /// The top-level miniscript abstract syntax tree (AST).
     pub struct Miniscript<Pk: MiniscriptKey, Ctx: ScriptContext> {
@@ -302,6 +305,7 @@ mod private {
                 node: t,
                 phantom: PhantomData,
             };
+
             // TODO: This recursion depth is based on segwitv0.
             // We can relax this in tapscript, but this should be good for almost
             // all practical cases and we can revisit this if needed.
@@ -324,6 +328,166 @@ mod private {
             ext: types::extra_props::ExtData,
         ) -> Miniscript<Pk, Ctx> {
             Miniscript { node, ty, ext, phantom: PhantomData }
+        }
+
+        /// Validates whether a given fragment meets the given set of
+        /// validation parameters.
+        pub fn validate(&self, params: &ValidationParams) -> Result<(), ValidationError>
+        where
+            Pk: MiniscriptKey,
+            Ctx: ScriptContext,
+        {
+            self.validate_non_top_level(params)?;
+
+            // Malleability is only a top-level check since you can fix malleability
+            // in some cases by adding wrappers.
+            if !params.allow_malleability && !self.is_non_malleable() {
+                return Err(ValidationError::Malleable);
+            }
+
+            // The B check is inherently top-level.
+            if !params.allow_non_b && self.ty.corr.base != types::Base::B {
+                return Err(ValidationError::NonBase(self.ty.corr.base));
+            }
+
+            // Sigless branches can be fixed by adding a conjunction with a signature.
+            if !params.allow_sigless_branch && !self.requires_sig() {
+                return Err(ValidationError::SiglessBranch);
+            }
+
+            // Unsatisifiable scripts can be fixed by adding a disjunction with something
+            // satisfiable.
+            if !params.allow_unsatisfiable && self.ext.sat_data.is_none() {
+                return Err(ValidationError::Unsatisfiable);
+            }
+
+            // All checks passed.
+            Ok(())
+        }
+
+        /// Validates a miniscript, doing only the checks that are applicable to all nodes,
+        /// not just top-level ones.
+        ///
+        /// In particular this excludes the "must be B" and "no sigless branches" checks.
+        /// To get these, run [`Self::validate`] which also calls through to this method.
+        pub fn validate_non_top_level(
+            &self,
+            params: &ValidationParams,
+        ) -> Result<(), ValidationError> {
+            if self.ext.tree_height > params.max_recursive_depth {
+                return Err(ValidationError::MaxRecursiveDepthExceeded {
+                    limit: params.max_recursive_depth,
+                });
+            }
+            if !params.allow_duplicate_keys && self.has_repeated_keys() {
+                return Err(ValidationError::DuplicateKeys);
+            }
+            if !params.allow_mixed_time_locks && self.has_mixed_timelocks() {
+                return Err(ValidationError::MixedTimeLocks);
+            }
+
+            let mut multipath_len = None;
+            let mut multipath_check = |pk: &Pk| {
+                if params.allow_inconsistent_multipath_keys {
+                    return Ok(());
+                }
+                match (multipath_len, pk.num_der_paths()) {
+                    (_, 0) | (_, 1) => {}
+                    (None, n) => multipath_len = Some(n),
+                    (Some(x), y) if x == y => { /* ok */ }
+                    (Some(x), y) => {
+                        return Err(ValidationError::MultipathKeyLenMismatch { len1: x, len2: y })
+                    }
+                }
+                Ok(())
+            };
+            for ms in self.iter() {
+                match ms.node {
+                    Terminal::DupIf(..) if !params.allow_dup_if => {
+                        return Err(ValidationError::IllegalDupIf)
+                    }
+                    Terminal::Multi(ref thresh) => {
+                        if !params.allow_multi {
+                            return Err(ValidationError::IllegalMulti);
+                        }
+                        for key in thresh.iter() {
+                            params.validate_pk(key)?;
+                            multipath_check(key)?;
+                        }
+                    }
+                    Terminal::MultiA(ref thresh) => {
+                        if !params.allow_multi_a {
+                            return Err(ValidationError::IllegalMultiA);
+                        }
+                        for key in thresh.iter() {
+                            params.validate_pk(key)?;
+                            multipath_check(key)?;
+                        }
+                    }
+                    Terminal::OrI(..) if !params.allow_or_i => {
+                        return Err(ValidationError::IllegalOrI)
+                    }
+                    Terminal::RawPkH(..) if !params.allow_raw_pkh => {
+                        return Err(ValidationError::IllegalRawPkh)
+                    }
+                    Terminal::PkK(ref pk) | Terminal::PkH(ref pk) => {
+                        params.validate_pk(pk)?;
+                        multipath_check(pk)?;
+                    }
+                    _ => {}
+                }
+            }
+
+            // FIXME we have to gate this check on params.max_script_size being finite
+            // because otherwise we'll attempt to call self.script_size() when validating
+            // NoChecks scripts, which we cannot do because we have forgotten what size
+            // keys are once we're in the NoChecks context.
+            if params.max_script_size < usize::MAX && self.script_size() > params.max_script_size {
+                return Err(ValidationError::MaxScriptSizeExceeded {
+                    actual: self.script_size(),
+                    limit: params.max_script_size,
+                });
+            }
+            // Satisfiability checks -- if there is no satisfaciton data set then we will
+            // early-return here, so all other checks should be done before this.
+            match self.max_satisfaction_witness_elements() {
+                // No possible satisfactions -- we are doing non-toplevel checks here
+                // so fail gracefully.
+                Err(..) => return Ok(()),
+                Ok(max_n) if max_n > params.max_witness_items => {
+                    return Err(ValidationError::MaxWitnessItemsExceeded {
+                        actual: max_n,
+                        limit: params.max_witness_items,
+                    })
+                }
+                Ok(..) => {}
+            }
+
+            let sat_op_count = self
+                .ext
+                .sat_op_count()
+                .expect("checked that satisfaction was possible above");
+            if sat_op_count > params.max_opcode_count {
+                return Err(ValidationError::MaxOpCountExceeded {
+                    actual: sat_op_count,
+                    limit: params.max_opcode_count,
+                });
+            }
+
+            let sat_data = self
+                .ext
+                .sat_data
+                .expect("checked that satisfaction was possible above");
+            if sat_data.max_witness_stack_count + sat_data.max_exec_stack_count
+                > params.max_exec_stack_size
+            {
+                return Err(ValidationError::MaxExecStackSizeExceeded {
+                    actual: sat_data.max_witness_stack_size + sat_data.max_exec_stack_count,
+                    limit: params.max_exec_stack_size,
+                });
+            }
+
+            Ok(())
         }
     }
 }
