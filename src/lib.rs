@@ -123,6 +123,7 @@ pub mod plan;
 pub mod policy;
 mod primitives;
 pub mod psbt;
+mod validation;
 
 #[cfg(test)]
 mod test_utils;
@@ -146,6 +147,7 @@ use crate::prelude::*;
 pub use crate::primitives::absolute_locktime::{AbsLockTime, AbsLockTimeError};
 pub use crate::primitives::relative_locktime::{RelLockTime, RelLockTimeError};
 pub use crate::primitives::threshold::{Threshold, ThresholdError};
+pub use crate::validation::{Error as ValidationError, ValidationParams};
 
 /// Public key trait which can be converted to Hash type
 pub trait MiniscriptKey: Clone + Eq + Ord + fmt::Debug + fmt::Display + hash::Hash {
@@ -497,6 +499,8 @@ pub enum Error {
     ParseThreshold(ParseThresholdError),
     /// Invalid expression tree.
     Parse(ParseError),
+    /// Validation of a script failed.
+    Validation(ValidationError),
 }
 
 #[doc(hidden)] // will be removed when we remove Error
@@ -552,6 +556,7 @@ impl fmt::Display for Error {
             Error::Threshold(ref e) => e.fmt(f),
             Error::ParseThreshold(ref e) => e.fmt(f),
             Error::Parse(ref e) => e.fmt(f),
+            Error::Validation(ref e) => e.fmt(f),
         }
     }
 }
@@ -593,6 +598,7 @@ impl std::error::Error for Error {
             Threshold(e) => Some(e),
             ParseThreshold(e) => Some(e),
             Parse(e) => Some(e),
+            Validation(e) => Some(e),
         }
     }
 }
