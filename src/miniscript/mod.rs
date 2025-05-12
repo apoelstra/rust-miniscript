@@ -471,10 +471,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
         Pk: ToPublicKey,
     {
         match satisfaction.stack {
-            satisfy::Witness::Stack(stack) => {
-                Ctx::check_witness(&stack)?;
-                Ok(stack)
-            }
+            satisfy::Witness::Stack(stack) => Ok(stack),
             satisfy::Witness::Unavailable | satisfy::Witness::Impossible => {
                 Err(Error::CouldNotSatisfy)
             }

@@ -15,7 +15,6 @@ use crate::miniscript::limits::{
 };
 use crate::miniscript::types;
 use crate::prelude::*;
-use crate::util::witness_to_scriptsig;
 use crate::{hash256, Error, ForEachKey, Miniscript, MiniscriptKey, Terminal};
 
 /// Error for Script Context
@@ -188,16 +187,6 @@ where
     fn check_terminal_non_malleable<Pk: MiniscriptKey>(
         _frag: &Terminal<Pk, Self>,
     ) -> Result<(), ScriptContextError>;
-
-    /// Check whether the given satisfaction is valid under the ScriptContext
-    /// For example, segwit satisfactions may fail if the witness len is more
-    /// 3600 or number of stack elements are more than 100.
-    fn check_witness(_witness: &[Vec<u8>]) -> Result<(), ScriptContextError> {
-        // Only really need to do this for segwitv0 and legacy
-        // Bare is already restricted by standardness rules
-        // and would reach these limits.
-        Ok(())
-    }
 
     /// Each context has slightly different rules on what Pks are allowed in descriptors
     /// Legacy/Bare does not allow x_only keys
@@ -389,19 +378,6 @@ impl ScriptContext for Legacy {
         }
     }
 
-    fn check_witness(witness: &[Vec<u8>]) -> Result<(), ScriptContextError> {
-        // In future, we could avoid by having a function to count only
-        // len of script instead of converting it.
-        let script_sig = witness_to_scriptsig(witness);
-        if script_sig.len() > MAX_SCRIPTSIG_SIZE {
-            return Err(ScriptContextError::MaxScriptSigSizeExceeded {
-                actual: script_sig.len(),
-                limit: MAX_SCRIPTSIG_SIZE,
-            });
-        }
-        Ok(())
-    }
-
     fn check_global_consensus_validity<Pk: MiniscriptKey>(
         ms: &Miniscript<Pk, Self>,
     ) -> Result<(), ScriptContextError> {
@@ -504,16 +480,6 @@ impl ScriptContext for Segwitv0 {
         } else {
             Ok(())
         }
-    }
-
-    fn check_witness(witness: &[Vec<u8>]) -> Result<(), ScriptContextError> {
-        if witness.len() > MAX_STANDARD_P2WSH_STACK_ITEMS {
-            return Err(ScriptContextError::MaxWitnessItemsExceeded {
-                actual: witness.len(),
-                limit: MAX_STANDARD_P2WSH_STACK_ITEMS,
-            });
-        }
-        Ok(())
     }
 
     fn check_global_consensus_validity<Pk: MiniscriptKey>(
@@ -625,17 +591,6 @@ impl ScriptContext for Tap {
         } else {
             Ok(())
         }
-    }
-
-    fn check_witness(witness: &[Vec<u8>]) -> Result<(), ScriptContextError> {
-        // Note that tapscript has a 1000 limit compared to 100 of segwitv0
-        if witness.len() > MAX_STACK_SIZE {
-            return Err(ScriptContextError::MaxWitnessItemsExceeded {
-                actual: witness.len(),
-                limit: MAX_STACK_SIZE,
-            });
-        }
-        Ok(())
     }
 
     fn check_global_consensus_validity<Pk: MiniscriptKey>(
@@ -880,13 +835,6 @@ impl ScriptContext for NoChecks {
     fn name_str() -> &'static str {
         // Internally used code
         "NochecksEcdsa"
-    }
-
-    fn check_witness(_witness: &[Vec<u8>]) -> Result<(), ScriptContextError> {
-        // Only really need to do this for segwitv0 and legacy
-        // Bare is already restricted by standardness rules
-        // and would reach these limits.
-        Ok(())
     }
 
     fn check_global_validity<Pk: MiniscriptKey>(
