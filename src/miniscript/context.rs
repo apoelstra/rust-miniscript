@@ -15,7 +15,7 @@ use crate::miniscript::limits::{
 };
 use crate::miniscript::types;
 use crate::prelude::*;
-use crate::{hash256, Error, ForEachKey, Miniscript, MiniscriptKey, Terminal};
+use crate::{hash256, Error, ForEachKey, Miniscript, MiniscriptKey, Terminal, ValidationParams};
 
 /// Error for Script Context
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -176,6 +176,18 @@ where
 {
     /// The consensus key associated with the type. Must be a parseable key
     type Key: ParseableKey;
+
+    /// The validation parameters enforcing consensus limits in this context, and
+    /// nothing further.
+    const CONSENSUS: ValidationParams;
+
+    /// Sensible validation parameters for this context. Unless you have a good reason
+    /// to choose otherwise, these are the validation parameters you want.
+    ///
+    /// They are also the validation parameters used throughout this library when no
+    /// explicit choice of parameters is made.
+    const SANE: ValidationParams;
+
     /// Depending on ScriptContext, fragments can be malleable. For Example,
     /// under Legacy context, PkH is malleable because it is possible to
     /// estimate the cost of satisfaction because of compressed keys
@@ -359,6 +371,20 @@ pub enum Legacy {}
 
 impl ScriptContext for Legacy {
     type Key = bitcoin::PublicKey;
+
+    const CONSENSUS: ValidationParams = ValidationParams {
+        allow_compressed_keys: true,
+        allow_dup_if: false,
+        allow_uncompressed_keys: true,
+        allow_multi_a: false,
+        allow_or_i: false,
+        allow_x_only_keys: false,
+        max_opcode_count: MAX_OPS_PER_SCRIPT,
+        max_script_size: MAX_SCRIPT_ELEMENT_SIZE,
+        ..ValidationParams::CONSENSUS
+    };
+    const SANE: ValidationParams = Self::CONSENSUS.intersect(&ValidationParams::SANE);
+
     fn check_terminal_non_malleable<Pk: MiniscriptKey>(
         frag: &Terminal<Pk, Self>,
     ) -> Result<(), ScriptContextError> {
@@ -465,6 +491,22 @@ pub enum Segwitv0 {}
 
 impl ScriptContext for Segwitv0 {
     type Key = bitcoin::PublicKey;
+
+    const CONSENSUS: ValidationParams = ValidationParams {
+        allow_compressed_keys: true,
+        allow_uncompressed_keys: false,
+        allow_multi_a: false,
+        allow_x_only_keys: false,
+        max_opcode_count: MAX_OPS_PER_SCRIPT,
+        max_exec_stack_size: MAX_STACK_SIZE,
+        ..ValidationParams::CONSENSUS
+    };
+    const SANE: ValidationParams = ValidationParams {
+        max_script_size: MAX_STANDARD_P2WSH_SCRIPT_SIZE,
+        max_witness_items: MAX_STANDARD_P2WSH_STACK_ITEMS,
+        ..Self::CONSENSUS.intersect(&ValidationParams::SANE)
+    };
+
     fn check_terminal_non_malleable<Pk: MiniscriptKey>(
         _frag: &Terminal<Pk, Self>,
     ) -> Result<(), ScriptContextError> {
@@ -576,6 +618,20 @@ pub enum Tap {}
 
 impl ScriptContext for Tap {
     type Key = bitcoin::secp256k1::XOnlyPublicKey;
+
+    const CONSENSUS: ValidationParams = ValidationParams {
+        allow_compressed_keys: false,
+        allow_uncompressed_keys: false,
+        allow_multi: false,
+        allow_x_only_keys: true,
+        ..ValidationParams::CONSENSUS
+    };
+    const SANE: ValidationParams = ValidationParams {
+        max_script_size: MAX_STANDARD_P2WSH_SCRIPT_SIZE,
+        max_witness_items: MAX_STANDARD_P2WSH_STACK_ITEMS,
+        ..Self::CONSENSUS.intersect(&ValidationParams::SANE)
+    };
+
     fn check_terminal_non_malleable<Pk: MiniscriptKey>(
         _frag: &Terminal<Pk, Self>,
     ) -> Result<(), ScriptContextError> {
@@ -685,6 +741,20 @@ pub enum BareCtx {}
 
 impl ScriptContext for BareCtx {
     type Key = bitcoin::PublicKey;
+
+    const CONSENSUS: ValidationParams = ValidationParams {
+        allow_compressed_keys: true,
+        allow_dup_if: false,
+        allow_uncompressed_keys: true,
+        allow_multi_a: false,
+        allow_or_i: false,
+        allow_x_only_keys: false,
+        max_opcode_count: MAX_OPS_PER_SCRIPT,
+        max_script_size: MAX_SCRIPT_SIZE,
+        ..ValidationParams::CONSENSUS
+    };
+    const SANE: ValidationParams = Self::CONSENSUS.intersect(&ValidationParams::SANE);
+
     fn check_terminal_non_malleable<Pk: MiniscriptKey>(
         _frag: &Terminal<Pk, Self>,
     ) -> Result<(), ScriptContextError> {
@@ -791,6 +861,10 @@ pub enum NoChecks {}
 impl ScriptContext for NoChecks {
     // todo: When adding support for interpreter, we need a enum with all supported keys here
     type Key = bitcoin::PublicKey;
+
+    const CONSENSUS: ValidationParams = ValidationParams::MAX;
+    const SANE: ValidationParams = ValidationParams::MAX;
+
     fn check_terminal_non_malleable<Pk: MiniscriptKey>(
         _frag: &Terminal<Pk, Self>,
     ) -> Result<(), ScriptContextError> {

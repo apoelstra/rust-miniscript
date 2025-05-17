@@ -130,7 +130,7 @@ impl ValidationParams {
     /// This includes any consensus limits that Miniscript understands, and
     /// forbids unsatisfiable programs. If you really want to parse anything
     /// that can be parsed, use [`Self::MAX`] instead.
-    pub const INSANE: Self = Self {
+    pub const CONSENSUS: Self = Self {
         allow_compressed_keys: true,
         allow_duplicate_keys: true,
         allow_dup_if: true,
@@ -399,7 +399,7 @@ mod tests {
 
     #[test]
     fn entailment() {
-        assert!(ValidationParams::SANE.entails(&ValidationParams::INSANE));
-        assert!(!ValidationParams::INSANE.entails(&ValidationParams::SANE));
+        assert!(ValidationParams::SANE.entails(&ValidationParams::CONSENSUS));
+        assert!(!ValidationParams::CONSENSUS.entails(&ValidationParams::SANE));
     }
 }
