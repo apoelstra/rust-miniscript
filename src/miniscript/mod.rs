@@ -519,24 +519,17 @@ impl Miniscript<<Tap as ScriptContext>::Key, Tap> {
 }
 
 impl<Ctx: ScriptContext> Miniscript<Ctx::Key, Ctx> {
-    /// Attempt to parse an insane(scripts don't clear sanity checks)
-    /// script into a Miniscript representation.
-    /// Use this to parse scripts with repeated pubkeys, timelock mixing, malleable
-    /// scripts without sig or scripts that can exceed resource limits.
-    /// Some of the analysis guarantees of miniscript are lost when dealing with
-    /// insane scripts. In general, in a multi-party setting users should only
-    /// accept sane scripts.
-    pub fn decode_insane(script: &script::Script) -> Result<Miniscript<Ctx::Key, Ctx>, Error> {
-        Miniscript::decode_with_ext(script, &ExtParams::insane())
+    /// Attempt to decode a Miniscript from Script, checking only for consensus compatibility,
+    /// and no other checks.
+    ///
+    /// It may make sense to use this method when parsing Script that is already
+    /// embedded in the chain. While it is inadvisable to use insane Miniscripts,
+    /// once it's on the chain you don't have much choice anymore.
+    pub fn decode_consensus(script: &script::Script) -> Result<Miniscript<Ctx::Key, Ctx>, Error> {
+        Miniscript::decode_with_ext(script, &ExtParams::allow_all())
     }
 
-    /// Attempt to parse an miniscript with extra features that not yet specified in the spec.
-    /// Users should not use this function unless they scripts can/will change in the future.
-    /// Currently, this function supports the following features:
-    ///     - Parsing all insane scripts
-    ///     - Parsing miniscripts with raw pubkey hashes
-    ///
-    /// Allowed extra features can be specified by the ext [`ExtParams`] argument.
+    /// Attempt to decode a Miniscript from Script, specifying which validation parameters to apply.
     pub fn decode_with_ext(
         script: &script::Script,
         ext: &ExtParams,
@@ -1161,8 +1154,8 @@ mod tests {
             assert_eq!(format!("{:x}", bitcoin_script), expected);
         }
         // Parse scripts with all extensions
-        let roundtrip = Segwitv0Script::decode_with_ext(&bitcoin_script, &ExtParams::allow_all())
-            .expect("parse string serialization");
+        let roundtrip =
+            Segwitv0Script::decode_consensus(&bitcoin_script).expect("parse string serialization");
         assert_eq!(roundtrip, script);
     }
 
@@ -1171,7 +1164,8 @@ mod tests {
         let ser = tree.encode();
         assert_eq!(ser.len(), tree.script_size());
         assert_eq!(ser.to_string(), s);
-        let deser = Segwitv0Script::decode_insane(&ser).expect("deserialize result of serialize");
+        let deser =
+            Segwitv0Script::decode_consensus(&ser).expect("deserialize result of serialize");
         assert_eq!(*tree, deser);
     }
 
@@ -1312,19 +1306,19 @@ mod tests {
     fn verify_parse() {
         let ms = "and_v(v:hash160(20195b5a3d650c17f0f29f91c33f8f6335193d07),or_d(sha256(96de8fc8c256fa1e1556d41af431cace7dca68707c78dd88c3acab8b17164c47),older(16)))";
         let ms: Segwitv0Script = Miniscript::from_str_insane(ms).unwrap();
-        assert_eq!(ms, Segwitv0Script::decode_insane(&ms.encode()).unwrap());
+        assert_eq!(ms, Segwitv0Script::decode_consensus(&ms.encode()).unwrap());
 
         let ms = "and_v(v:sha256(96de8fc8c256fa1e1556d41af431cace7dca68707c78dd88c3acab8b17164c47),or_d(sha256(96de8fc8c256fa1e1556d41af431cace7dca68707c78dd88c3acab8b17164c47),older(16)))";
         let ms: Segwitv0Script = Miniscript::from_str_insane(ms).unwrap();
-        assert_eq!(ms, Segwitv0Script::decode_insane(&ms.encode()).unwrap());
+        assert_eq!(ms, Segwitv0Script::decode_consensus(&ms.encode()).unwrap());
 
         let ms = "and_v(v:ripemd160(20195b5a3d650c17f0f29f91c33f8f6335193d07),or_d(sha256(96de8fc8c256fa1e1556d41af431cace7dca68707c78dd88c3acab8b17164c47),older(16)))";
         let ms: Segwitv0Script = Miniscript::from_str_insane(ms).unwrap();
-        assert_eq!(ms, Segwitv0Script::decode_insane(&ms.encode()).unwrap());
+        assert_eq!(ms, Segwitv0Script::decode_consensus(&ms.encode()).unwrap());
 
         let ms = "and_v(v:hash256(96de8fc8c256fa1e1556d41af431cace7dca68707c78dd88c3acab8b17164c47),or_d(sha256(96de8fc8c256fa1e1556d41af431cace7dca68707c78dd88c3acab8b17164c47),older(16)))";
         let ms: Segwitv0Script = Miniscript::from_str_insane(ms).unwrap();
-        assert_eq!(ms, Segwitv0Script::decode_insane(&ms.encode()).unwrap());
+        assert_eq!(ms, Segwitv0Script::decode_consensus(&ms.encode()).unwrap());
     }
 
     #[test]
@@ -1515,21 +1509,21 @@ mod tests {
     #[test]
     fn deserialize() {
         // Most of these came from fuzzing, hence the increasing lengths
-        assert!(Segwitv0Script::decode_insane(&hex_script("")).is_err()); // empty
-        assert!(Segwitv0Script::decode_insane(&hex_script("00")).is_ok()); // FALSE
-        assert!(Segwitv0Script::decode_insane(&hex_script("51")).is_ok()); // TRUE
-        assert!(Segwitv0Script::decode_insane(&hex_script("69")).is_err()); // VERIFY
-        assert!(Segwitv0Script::decode_insane(&hex_script("0000")).is_err()); //and_v(FALSE,FALSE)
-        assert!(Segwitv0Script::decode_insane(&hex_script("1001")).is_err()); // incomplete push
-        assert!(Segwitv0Script::decode_insane(&hex_script("03990300b2")).is_err()); // non-minimal #
-        assert!(Segwitv0Script::decode_insane(&hex_script("8559b2")).is_err()); // leading bytes
-        assert!(Segwitv0Script::decode_insane(&hex_script("4c0169b2")).is_err()); // non-minimal push
-        assert!(Segwitv0Script::decode_insane(&hex_script("0000af0000ae85")).is_err()); // OR not BOOLOR
+        assert!(Segwitv0Script::decode_consensus(&hex_script("")).is_err()); // empty
+        assert!(Segwitv0Script::decode_consensus(&hex_script("00")).is_ok()); // FALSE
+        assert!(Segwitv0Script::decode_consensus(&hex_script("51")).is_ok()); // TRUE
+        assert!(Segwitv0Script::decode_consensus(&hex_script("69")).is_err()); // VERIFY
+        assert!(Segwitv0Script::decode_consensus(&hex_script("0000")).is_err()); //and_v(FALSE,FALSE)
+        assert!(Segwitv0Script::decode_consensus(&hex_script("1001")).is_err()); // incomplete push
+        assert!(Segwitv0Script::decode_consensus(&hex_script("03990300b2")).is_err()); // non-minimal #
+        assert!(Segwitv0Script::decode_consensus(&hex_script("8559b2")).is_err()); // leading bytes
+        assert!(Segwitv0Script::decode_consensus(&hex_script("4c0169b2")).is_err()); // non-minimal push
+        assert!(Segwitv0Script::decode_consensus(&hex_script("0000af0000ae85")).is_err()); // OR not BOOLOR
 
         // misc fuzzer problems
-        assert!(Segwitv0Script::decode_insane(&hex_script("0000000000af")).is_err());
-        assert!(Segwitv0Script::decode_insane(&hex_script("04009a2970af00")).is_err()); // giant CMS key num
-        assert!(Segwitv0Script::decode_insane(&hex_script(
+        assert!(Segwitv0Script::decode_consensus(&hex_script("0000000000af")).is_err());
+        assert!(Segwitv0Script::decode_consensus(&hex_script("04009a2970af00")).is_err()); // giant CMS key num
+        assert!(Segwitv0Script::decode_consensus(&hex_script(
             "2102ffffffffffffffefefefefefefefefefefef394c0fe5b711179e124008584753ac6900"
         ))
         .is_err());
@@ -1569,22 +1563,22 @@ mod tests {
 
         //---------------- test script <-> miniscript ---------------
         // Test parsing from scripts: x-only fails decoding in segwitv0 ctx
-        Segwitv0Script::decode_insane(&hex_script(
+        Segwitv0Script::decode_consensus(&hex_script(
             "202788ee41e76f4f3af603da5bc8fa22997bc0344bb0f95666ba6aaff0242baa99ac",
         ))
         .unwrap_err();
         // x-only succeeds in tap ctx
-        Tapscript::decode_insane(&hex_script(
+        Tapscript::decode_consensus(&hex_script(
             "202788ee41e76f4f3af603da5bc8fa22997bc0344bb0f95666ba6aaff0242baa99ac",
         ))
         .unwrap();
         // tapscript fails decoding with compressed
-        Tapscript::decode_insane(&hex_script(
+        Tapscript::decode_consensus(&hex_script(
             "21022788ee41e76f4f3af603da5bc8fa22997bc0344bb0f95666ba6aaff0242baa99ac",
         ))
         .unwrap_err();
         // Segwitv0 succeeds decoding with tapscript.
-        Segwitv0Script::decode_insane(&hex_script(
+        Segwitv0Script::decode_consensus(&hex_script(
             "21022788ee41e76f4f3af603da5bc8fa22997bc0344bb0f95666ba6aaff0242baa99ac",
         ))
         .unwrap();
@@ -1620,7 +1614,7 @@ mod tests {
             .unwrap();
         // script rtt test
         assert_eq!(
-            Miniscript::<XOnlyPublicKey, Tap>::decode_insane(&tap_ms.encode()).unwrap(),
+            Miniscript::<XOnlyPublicKey, Tap>::decode_consensus(&tap_ms.encode()).unwrap(),
             tap_ms
         );
         assert_eq!(tap_ms.script_size(), 104);
@@ -1661,7 +1655,7 @@ mod tests {
         .unwrap();
         let ms_trans = ms.translate_pk(&mut StrKeyTranslator::new()).unwrap();
         let enc = ms_trans.encode();
-        let ms = Miniscript::<bitcoin::PublicKey, Segwitv0>::decode_insane(&enc).unwrap();
+        let ms = Miniscript::<bitcoin::PublicKey, Segwitv0>::decode_consensus(&enc).unwrap();
         assert_eq!(ms_trans.encode(), ms.encode());
     }
 
@@ -1684,8 +1678,8 @@ mod tests {
         let script = ms.encode();
         // The same test, but parsing from script
         SegwitMs::decode(&script).unwrap_err();
-        SegwitMs::decode_insane(&script).unwrap_err();
-        SegwitMs::decode_with_ext(&script, &ExtParams::allow_all()).unwrap();
+        SegwitMs::decode_with_ext(&script, &ExtParams::insane()).unwrap_err();
+        SegwitMs::decode_consensus(&script).unwrap();
 
         // Try replacing the raw_pkh with a pkh
         let mut map = BTreeMap::new();
@@ -1877,7 +1871,7 @@ mod tests {
         for _ in 0..10000 {
             script = script.push_opcode(bitcoin::opcodes::all::OP_0NOTEQUAL);
         }
-        Tapscript::decode_insane(&script.into_script()).unwrap_err();
+        Tapscript::decode_consensus(&script.into_script()).unwrap_err();
     }
 
     #[test]

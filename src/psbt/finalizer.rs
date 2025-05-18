@@ -24,8 +24,8 @@ use super::{sanity_check, Error, InputError, Psbt, PsbtInputSatisfier};
 use crate::prelude::*;
 use crate::util::witness_size;
 use crate::{
-    interpreter, BareCtx, Descriptor, ExtParams, Legacy, Miniscript, Satisfier, Segwitv0, SigType,
-    Tap, ToPublicKey,
+    interpreter, BareCtx, Descriptor, Legacy, Miniscript, Satisfier, Segwitv0, SigType, Tap,
+    ToPublicKey,
 };
 
 // Satisfy the taproot descriptor. It is not possible to infer the complete
@@ -71,10 +71,7 @@ fn construct_tap_witness(
                 // We don't know how to satisfy non default version scripts yet
                 continue;
             }
-            let ms = match Miniscript::<XOnlyPublicKey, Tap>::decode_with_ext(
-                script,
-                &ExtParams::allow_all(),
-            ) {
+            let ms = match Miniscript::<XOnlyPublicKey, Tap>::decode_consensus(script) {
                 Ok(ms) => ms.substitute_raw_pkh(&map),
                 Err(..) => continue, // try another script
             };
@@ -213,10 +210,7 @@ fn get_descriptor(psbt: &Psbt, index: usize) -> Result<Descriptor<PublicKey>, In
                     p2wsh_expected: script_pubkey.clone(),
                 });
             }
-            let ms = Miniscript::<bitcoin::PublicKey, Segwitv0>::decode_with_ext(
-                witness_script,
-                &ExtParams::allow_all(),
-            )?;
+            let ms = Miniscript::<bitcoin::PublicKey, Segwitv0>::decode_consensus(witness_script)?;
             Ok(Descriptor::new_wsh(ms.substitute_raw_pkh(&map))?)
         } else {
             Err(InputError::MissingWitnessScript)
@@ -240,9 +234,8 @@ fn get_descriptor(psbt: &Psbt, index: usize) -> Result<Descriptor<PublicKey>, In
                                 p2wsh_expected: redeem_script.clone(),
                             });
                         }
-                        let ms = Miniscript::<bitcoin::PublicKey, Segwitv0>::decode_with_ext(
+                        let ms = Miniscript::<bitcoin::PublicKey, Segwitv0>::decode_consensus(
                             witness_script,
-                            &ExtParams::allow_all(),
                         )?;
                         Ok(Descriptor::new_sh_wsh(ms.substitute_raw_pkh(&map))?)
                     } else {
@@ -272,9 +265,8 @@ fn get_descriptor(psbt: &Psbt, index: usize) -> Result<Descriptor<PublicKey>, In
                         return Err(InputError::NonEmptyWitnessScript);
                     }
                     if let Some(ref redeem_script) = inp.redeem_script {
-                        let ms = Miniscript::<bitcoin::PublicKey, Legacy>::decode_with_ext(
+                        let ms = Miniscript::<bitcoin::PublicKey, Legacy>::decode_consensus(
                             redeem_script,
-                            &ExtParams::allow_all(),
                         )?;
                         Ok(Descriptor::new_sh(ms)?)
                     } else {
@@ -291,10 +283,7 @@ fn get_descriptor(psbt: &Psbt, index: usize) -> Result<Descriptor<PublicKey>, In
         if inp.redeem_script.is_some() {
             return Err(InputError::NonEmptyRedeemScript);
         }
-        let ms = Miniscript::<bitcoin::PublicKey, BareCtx>::decode_with_ext(
-            &script_pubkey,
-            &ExtParams::allow_all(),
-        )?;
+        let ms = Miniscript::<bitcoin::PublicKey, BareCtx>::decode_consensus(&script_pubkey)?;
         Ok(Descriptor::new_bare(ms.substitute_raw_pkh(&map))?)
     }
 }
