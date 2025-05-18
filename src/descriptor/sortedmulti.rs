@@ -109,15 +109,6 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> ForEachKey<Pk> for SortedMultiVec<Pk
 }
 
 impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
-    /// utility function to sanity a sorted multi vec
-    pub fn sanity_check(&self) -> Result<(), Error> {
-        let ms: Miniscript<Pk, Ctx> =
-            Miniscript::from_ast(Terminal::Multi(self.inner.clone())).expect("Must typecheck");
-        ms.sanity_check().map_err(From::from)
-    }
-}
-
-impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
     /// Create Terminal::Multi containing sorted pubkeys
     pub fn sorted_node(&self) -> Terminal<Pk, Ctx>
     where

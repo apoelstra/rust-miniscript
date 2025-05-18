@@ -115,7 +115,7 @@ impl Correctness {
     }
 
     /// Confirm invariants of the correctness checker.
-    pub fn sanity_checks(&self) {
+    pub(crate) fn sanity_checks(&self) {
         match self.base {
             Base::B => {}
             Base::K => {

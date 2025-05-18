@@ -56,15 +56,6 @@ impl<Pk: MiniscriptKey> Wsh<Pk> {
     #[deprecated(since = "8.0.0", note = "use format!(\"{:#}\") instead")]
     pub fn to_string_no_checksum(&self) -> String { format!("{:#}", self) }
 
-    /// Checks whether the descriptor is safe.
-    pub fn sanity_check(&self) -> Result<(), Error> {
-        match self.inner {
-            WshInner::SortedMulti(ref smv) => smv.sanity_check()?,
-            WshInner::Ms(ref ms) => ms.sanity_check()?,
-        }
-        Ok(())
-    }
-
     /// Computes an upper bound on the difference between a non-satisfied
     /// `TxIn`'s `segwit_weight` and a satisfied `TxIn`'s `segwit_weight`
     ///
@@ -324,15 +315,6 @@ impl<Pk: MiniscriptKey> Wpkh<Pk> {
     /// Get the descriptor without the checksum
     #[deprecated(since = "8.0.0", note = "use format!(\"{:#}\") instead")]
     pub fn to_string_no_checksum(&self) -> String { format!("{:#}", self) }
-
-    /// Checks whether the descriptor is safe.
-    pub fn sanity_check(&self) -> Result<(), Error> {
-        if self.pk.is_uncompressed() {
-            Err(Error::ContextError(ScriptContextError::CompressedOnly(self.pk.to_string())))
-        } else {
-            Ok(())
-        }
-    }
 
     /// Computes an upper bound on the difference between a non-satisfied
     /// `TxIn`'s `segwit_weight` and a satisfied `TxIn`'s `segwit_weight`

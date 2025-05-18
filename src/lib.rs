@@ -56,11 +56,6 @@
 //!     "3CJxbQBfWAe1ZkKiGQNEYrioV73ZwvBWns"
 //! );
 //!
-//! // Check whether the descriptor is safe. This checks whether all spend paths are accessible in
-//! // the Bitcoin network. It may be possible that some of the spend paths require more than 100
-//! // elements in Wsh scripts or they contain a combination of timelock and heightlock.
-//! assert!(desc.sanity_check().is_ok());
-//!
 //! // Estimate the satisfaction cost.
 //! // scriptSig: OP_PUSH34 <OP_0 OP_32 <32-byte-hash>>
 //! // = (1 + 1 + 1 + 32) * 4 = 140 WU

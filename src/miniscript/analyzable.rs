@@ -213,31 +213,6 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
         self.iter().any(|ms| matches!(ms.node, Terminal::RawPkH(_)))
     }
 
-    /// Check whether the underlying Miniscript is safe under the current context
-    /// Lifting these polices would create a semantic representation that does
-    /// not represent the underlying semantics when miniscript is spent.
-    /// Signing logic may not find satisfaction even if one exists.
-    ///
-    /// For most cases, users should be dealing with safe scripts.
-    /// Use this function to check whether the guarantees of library hold.
-    /// Most functions of the library like would still
-    /// work, but results cannot be relied upon
-    pub fn sanity_check(&self) -> Result<(), AnalysisError> {
-        if !self.requires_sig() {
-            Err(AnalysisError::SiglessBranch)
-        } else if !self.is_non_malleable() {
-            Err(AnalysisError::Malleable)
-        } else if !self.within_resource_limits() {
-            Err(AnalysisError::BranchExceedResouceLimits)
-        } else if self.has_repeated_keys() {
-            Err(AnalysisError::RepeatedPubkeys)
-        } else if self.has_mixed_timelocks() {
-            Err(AnalysisError::HeightTimelockCombination)
-        } else {
-            Ok(())
-        }
-    }
-
     /// Check whether the miniscript follows the given Extra policy [`ExtParams`]
     pub fn ext_check(&self, ext: &ExtParams) -> Result<(), AnalysisError> {
         if !ext.top_unsafe && !self.requires_sig() {

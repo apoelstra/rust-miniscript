@@ -25,10 +25,6 @@ fn main() {
     )
     .expect("Resource limits");
 
-    // Check whether the descriptor is safe. This checks whether all spend paths are accessible in
-    // the Bitcoin network. It may be possible that some of the spend paths require more than 100
-    // elements in Wsh scripts or they contain a combination of timelock and heightlock.
-    assert!(htlc_descriptor.sanity_check().is_ok());
     assert_eq!(
         format!("{}", htlc_descriptor),
         "wsh(andor(pk(022222222222222222222222222222222222222222222222222222222222222222),sha256(1111111111111111111111111111111111111111111111111111111111111111),and_v(v:pkh(020202020202020202020202020202020202020202020202020202020202020202),older(4444))))#lfytrjen"

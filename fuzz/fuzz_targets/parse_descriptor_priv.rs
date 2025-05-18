@@ -10,7 +10,6 @@ fn do_test(data: &[u8]) {
 
     if let Ok((desc, _)) = Descriptor::parse_descriptor(secp, &data_str) {
         let _output = desc.to_string();
-        let _sanity_check = desc.sanity_check();
     }
 }
 

@@ -718,11 +718,11 @@ impl<Ctx: ScriptContext> Miniscript<Ctx::Key, Ctx> {
         }
     }
 
-    /// Attempt to parse a Script into Miniscript representation.
+    /// Attempt to decode a Script as a Miniscript.
     ///
-    /// This function will fail parsing for scripts that do not clear the
-    /// [`Miniscript::sanity_check`] checks. Use [`Miniscript::decode_insane`] to
-    /// parse such scripts.
+    /// This will enforce sanity and standardness rules and fail to decode if they
+    /// are validated. You may want [`Self::decode_consensus`] if you want to decode
+    /// anyway.
     ///
     /// ## Decode/Parse a miniscript from script hex
     ///
@@ -1186,9 +1186,6 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> FromTree for Miniscript<Pk, Ctx> {
 
 impl<Pk: FromStrKey, Ctx: ScriptContext> str::FromStr for Miniscript<Pk, Ctx> {
     type Err = Error;
-    /// Parse a Miniscript from string and perform sanity checks
-    /// See [Miniscript::from_str_insane] to parse scripts from string that
-    /// do not clear the [Miniscript::sanity_check] checks.
     fn from_str(s: &str) -> Result<Miniscript<Pk, Ctx>, Error> {
         let ms = Self::from_str_with_validation_params(s, &Ctx::SANE)?;
         Ok(ms)
@@ -1874,11 +1871,6 @@ mod tests {
         // ...though you can parse one with from_str_insane
         let ok_insane =
             Miniscript::<String, Segwitv0>::from_str_insane("and_v(v:pk(A),pk(A))").unwrap();
-        // ...but this cannot be sanity checked.
-        assert!(matches!(
-            ok_insane.sanity_check().unwrap_err(),
-            crate::AnalysisError::RepeatedPubkeys
-        ));
         // ...it can be lifted, though it's unclear whether this is a deliberate
         // choice or just an accident. It seems weird given that duplicate public
         // keys are forbidden in several other places.
@@ -1899,7 +1891,6 @@ mod tests {
             "or_i(and_v(v:older(4194304),pk(A)),and_v(v:older(1),pk(B)))",
         )
         .unwrap();
-        ok_or.sanity_check().unwrap();
         ok_or.lift().unwrap();
 
         // ...and you can parse one with from_str_insane
@@ -1907,11 +1898,7 @@ mod tests {
             "and_v(v:and_v(v:older(4194304),pk(A)),and_v(v:older(1),pk(B)))",
         )
         .unwrap();
-        // ...but this cannot be sanity checked or lifted
-        assert_eq!(
-            ok_insane.sanity_check().unwrap_err(),
-            crate::AnalysisError::HeightTimelockCombination
-        );
+        // ...but this cannot lifted
         assert!(matches!(
             ok_insane.lift().unwrap_err(),
             Error::LiftError(crate::policy::LiftError::HeightTimelockCombination)

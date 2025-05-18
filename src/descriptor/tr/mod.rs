@@ -140,14 +140,6 @@ impl<Pk: MiniscriptKey> Tr<Pk> {
         }
     }
 
-    /// Checks whether the descriptor is safe.
-    pub fn sanity_check(&self) -> Result<(), Error> {
-        for leaf in self.leaves() {
-            leaf.miniscript().sanity_check()?;
-        }
-        Ok(())
-    }
-
     /// Computes an upper bound on the difference between a non-satisfied
     /// `TxIn`'s `segwit_weight` and a satisfied `TxIn`'s `segwit_weight`
     ///

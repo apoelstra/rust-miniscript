@@ -75,7 +75,6 @@ fn use_descriptor<K: MiniscriptKey>(d: Descriptor<K>) {
     println!("{}", d);
     println!("{:?}", d);
     println!("{:?}", d.desc_type());
-    println!("{:?}", d.sanity_check());
 }
 
 struct StrPkTranslator {

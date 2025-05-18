@@ -13,11 +13,6 @@ fn main() {
     )
     .unwrap();
 
-    // Check whether the descriptor is safe. This checks whether all spend paths are accessible in
-    // the Bitcoin network. It may be possible that some of the spend paths require more than 100
-    // elements in Wsh scripts or they contain a combination of timelock and heightlock.
-    assert!(desc.sanity_check().is_ok());
-
     // Compute the script pubkey. As mentioned in the documentation, script_pubkey only fails
     // for Tr descriptors that don't have some pre-computed data.
     assert_eq!(

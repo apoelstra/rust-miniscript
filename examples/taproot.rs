@@ -52,9 +52,6 @@ fn main() {
             .unwrap();
     assert_eq!(desc, expected_desc);
 
-    // Check whether the descriptors are safe.
-    assert!(desc.sanity_check().is_ok());
-
     // Descriptor type and version should match respectively for taproot
     let desc_type = desc.desc_type();
     assert_eq!(desc_type, DescriptorType::Tr);

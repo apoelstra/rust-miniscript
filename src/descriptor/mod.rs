@@ -327,26 +327,6 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
         }
     }
 
-    /// Checks whether the descriptor is safe.
-    ///
-    /// Checks whether all the spend paths in the descriptor are possible on the
-    /// bitcoin network under the current standardness and consensus rules. Also
-    /// checks whether the descriptor requires signatures on all spend paths and
-    /// whether the script is malleable.
-    ///
-    /// In general, all the guarantees of miniscript hold only for safe scripts.
-    /// The signer may not be able to find satisfactions even if one exists.
-    pub fn sanity_check(&self) -> Result<(), Error> {
-        match *self {
-            Descriptor::Bare(ref bare) => bare.sanity_check(),
-            Descriptor::Pkh(_) => Ok(()),
-            Descriptor::Wpkh(ref wpkh) => wpkh.sanity_check(),
-            Descriptor::Wsh(ref wsh) => wsh.sanity_check(),
-            Descriptor::Sh(ref sh) => sh.sanity_check(),
-            Descriptor::Tr(ref tr) => tr.sanity_check(),
-        }
-    }
-
     /// Computes an upper bound on the difference between a non-satisfied
     /// `TxIn`'s `segwit_weight` and a satisfied `TxIn`'s `segwit_weight`
     ///
@@ -1050,9 +1030,6 @@ impl<Pk: FromStrKey> FromStr for Descriptor<Pk> {
         let top = expression::Tree::from_str(s)?;
         let ret = Self::from_tree(top.root())?;
         if let Descriptor::Tr(ref inner) = ret {
-            // FIXME preserve weird/broken behavior from 12.x.
-            // See https://github.com/rust-bitcoin/rust-miniscript/issues/734
-            ret.sanity_check()?;
             for item in inner.leaves() {
                 item.miniscript()
                     .ext_check(&crate::miniscript::analyzable::ExtParams::sane())?;

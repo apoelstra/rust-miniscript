@@ -47,12 +47,6 @@ impl<Pk: MiniscriptKey> Bare<Pk> {
     /// get the inner
     pub fn as_inner(&self) -> &Miniscript<Pk, BareCtx> { &self.ms }
 
-    /// Checks whether the descriptor is safe.
-    pub fn sanity_check(&self) -> Result<(), Error> {
-        self.ms.sanity_check()?;
-        Ok(())
-    }
-
     /// Computes an upper bound on the difference between a non-satisfied
     /// `TxIn`'s `segwit_weight` and a satisfied `TxIn`'s `segwit_weight`
     ///

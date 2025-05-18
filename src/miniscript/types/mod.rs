@@ -211,11 +211,12 @@ impl Type {
     }
 
     /// Confirm invariants of the type checker.
-    pub fn sanity_checks(&self) {
+    fn sanity_checks(&self) {
         debug_assert!(!self.corr.dissatisfiable || self.mall.dissat != Dissat::None);
         debug_assert!(self.mall.dissat == Dissat::None || self.corr.base != Base::V);
         debug_assert!(self.mall.safe || self.corr.base != Base::K);
         debug_assert!(self.mall.non_malleable || self.corr.input != Input::Zero);
+        self.corr.sanity_checks();
     }
 
     /// Constructor for the type of the `pk_k` fragment.

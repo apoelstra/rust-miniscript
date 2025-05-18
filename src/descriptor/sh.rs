@@ -140,17 +140,6 @@ impl<Pk: MiniscriptKey> Sh<Pk> {
     /// Create a new p2sh wrapper for the given wsh descriptor
     pub fn new_with_wsh(wsh: Wsh<Pk>) -> Self { Self { inner: ShInner::Wsh(wsh) } }
 
-    /// Checks whether the descriptor is safe.
-    pub fn sanity_check(&self) -> Result<(), Error> {
-        match self.inner {
-            ShInner::Wsh(ref wsh) => wsh.sanity_check()?,
-            ShInner::Wpkh(ref wpkh) => wpkh.sanity_check()?,
-            ShInner::SortedMulti(ref smv) => smv.sanity_check()?,
-            ShInner::Ms(ref ms) => ms.sanity_check()?,
-        }
-        Ok(())
-    }
-
     /// Create a new p2sh wrapped wsh sortedmulti descriptor from threshold
     /// `k` and Vec of `pks`
     pub fn new_wsh_sortedmulti(

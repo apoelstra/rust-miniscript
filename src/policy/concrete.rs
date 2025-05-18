@@ -254,9 +254,6 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
                                     continue;
                                 }
                                 let compilation = compiler::best_compilation::<Pk, Tap>(pol)?;
-                                compilation
-                                    .sanity_check()
-                                    .expect("compiler produces sane output");
                                 leaf_compilations.push((OrdF64(prob), compilation));
                             }
                             if !leaf_compilations.is_empty() {

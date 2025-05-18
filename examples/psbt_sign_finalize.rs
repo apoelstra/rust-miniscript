@@ -20,7 +20,6 @@ fn main() {
     let s = "wsh(t:or_c(pk(027a3565454fe1b749bccaef22aff72843a9c3efefd7b16ac54537a0c23f0ec0de),v:thresh(1,pkh(032d672a1a91cc39d154d366cd231983661b0785c7f27bc338447565844f4a6813),a:pkh(03417129311ed34c242c012cd0a3e0b9bca0065f742d0dfb63c78083ea6a02d4d9),a:pkh(025a687659658baeabdfc415164528065be7bcaade19342241941e556557f01e28))))#7hut9ukn";
     let bridge_descriptor = Descriptor::from_str(s).unwrap();
     //let bridge_descriptor = Descriptor::<bitcoin::PublicKey>::from_str(&s).expect("parse descriptor string");
-    assert!(bridge_descriptor.sanity_check().is_ok());
     println!("Bridge pubkey script: {}", bridge_descriptor.script_pubkey());
     println!("Bridge address: {}", bridge_descriptor.address(Network::Regtest).unwrap());
     println!(
