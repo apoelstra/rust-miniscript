@@ -448,8 +448,6 @@ pub enum Error {
     Unexpected(String),
     /// Encountered a wrapping character that we don't recognize
     UnknownWrapper(char),
-    /// Parsed a miniscript and the result was not of type T
-    NonTopLevel(String),
     /// Parsed a miniscript but there were more script opcodes after it
     Trailing(String),
     /// Could not satisfy a script (fragment) because of a missing signature
@@ -520,7 +518,6 @@ impl fmt::Display for Error {
             Error::UnexpectedStart => f.write_str("unexpected start of script"),
             Error::Unexpected(ref s) => write!(f, "unexpected «{}»", s),
             Error::UnknownWrapper(ch) => write!(f, "unknown wrapper «{}:»", ch),
-            Error::NonTopLevel(ref s) => write!(f, "non-T miniscript: {}", s),
             Error::Trailing(ref s) => write!(f, "trailing tokens: {}", s),
             Error::MissingSig(ref pk) => write!(f, "missing signature for key {:?}", pk),
             Error::CouldNotSatisfy => f.write_str("could not satisfy"),
@@ -570,7 +567,6 @@ impl std::error::Error for Error {
             UnexpectedStart
             | Unexpected(_)
             | UnknownWrapper(_)
-            | NonTopLevel(_)
             | Trailing(_)
             | MissingSig(_)
             | CouldNotSatisfy

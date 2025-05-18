@@ -237,7 +237,17 @@ impl ValidationParams {
     where
         Pk: crate::MiniscriptKey,
     {
-        if !self.allow_compressed_keys && !key.is_uncompressed() && !key.is_x_only_key() {
+        // Compressed keys are allowed if -either- compressed keys or x-only keys are allowed:
+        // for purposes of validating a constructed Miniscript, we treat compressed keys as
+        // x-only ones, and when encoding them we will just drop their parity. (When decoding
+        // a Miniscript from Script, we are strict and do not allow compressed keys in place
+        // of x-only ones. But there we have explicit logic, rather than using this function
+        // for rejection.)
+        if !self.allow_compressed_keys
+            && !self.allow_x_only_keys
+            && !key.is_uncompressed()
+            && !key.is_x_only_key()
+        {
             return Err(KeyError::IllegalCompressedKey(key.to_string()));
         }
         if !self.allow_uncompressed_keys && key.is_uncompressed() {

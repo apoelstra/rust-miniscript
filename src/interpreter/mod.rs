@@ -1055,7 +1055,6 @@ mod tests {
 
     use super::inner::ToNoChecks;
     use super::*;
-    use crate::miniscript::analyzable::ExtParams;
 
     #[allow(clippy::type_complexity)]
     fn setup_keys_sigs(
@@ -1558,14 +1557,12 @@ mod tests {
     // because it does not implement FromStr
     fn no_checks_ms(ms: &str) -> Miniscript<BitcoinKey, NoChecks> {
         // Parsing should allow raw hashes in the interpreter
-        let elem: Miniscript<bitcoin::PublicKey, NoChecks> =
-            Miniscript::from_str_ext(ms, &ExtParams::allow_all()).unwrap();
+        let elem: Miniscript<bitcoin::PublicKey, NoChecks> = ms.parse().unwrap();
         elem.to_no_checks_ms()
     }
 
     fn x_only_no_checks_ms(ms: &str) -> Miniscript<BitcoinKey, NoChecks> {
-        let elem: Miniscript<bitcoin::XOnlyPublicKey, NoChecks> =
-            Miniscript::from_str_ext(ms, &ExtParams::allow_all()).unwrap();
+        let elem: Miniscript<bitcoin::XOnlyPublicKey, NoChecks> = ms.parse().unwrap();
         elem.to_no_checks_ms()
     }
 }

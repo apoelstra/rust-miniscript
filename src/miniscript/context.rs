@@ -13,7 +13,6 @@ use crate::miniscript::limits::{
     MAX_OPS_PER_SCRIPT, MAX_SCRIPTSIG_SIZE, MAX_SCRIPT_ELEMENT_SIZE, MAX_SCRIPT_SIZE,
     MAX_STACK_SIZE, MAX_STANDARD_P2WSH_SCRIPT_SIZE, MAX_STANDARD_P2WSH_STACK_ITEMS,
 };
-use crate::miniscript::types;
 use crate::prelude::*;
 use crate::{hash256, Error, ForEachKey, Miniscript, MiniscriptKey, Terminal, ValidationParams};
 
@@ -283,9 +282,6 @@ where
 
     /// Check whether the top-level is type B
     fn top_level_type_check<Pk: MiniscriptKey>(ms: &Miniscript<Pk, Self>) -> Result<(), Error> {
-        if ms.ty.corr.base != types::Base::B {
-            return Err(Error::NonTopLevel(format!("{:?}", ms)));
-        }
         // (Ab)use `for_each_key` to record the number of derivation paths a multipath key has.
         #[derive(PartialEq)]
         enum MultipathLenChecker {
@@ -929,10 +925,7 @@ impl ScriptContext for NoChecks {
         Ok(())
     }
 
-    fn top_level_type_check<Pk: MiniscriptKey>(ms: &Miniscript<Pk, Self>) -> Result<(), Error> {
-        if ms.ty.corr.base != types::Base::B {
-            return Err(Error::NonTopLevel(format!("{:?}", ms)));
-        }
+    fn top_level_type_check<Pk: MiniscriptKey>(_: &Miniscript<Pk, Self>) -> Result<(), Error> {
         Ok(())
     }
 

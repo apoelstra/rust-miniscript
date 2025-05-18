@@ -18,7 +18,6 @@ use bitcoin::hashes::hash160;
 use bitcoin::script;
 use bitcoin::taproot::{LeafVersion, TapLeafHash};
 
-use self::analyzable::ExtParams;
 pub use self::context::{BareCtx, Legacy, Segwitv0, Tap};
 use crate::iter::TreeLike;
 use crate::prelude::*;
@@ -963,33 +962,25 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
 }
 
 impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
-    /// Attempt to parse an insane(scripts don't clear sanity checks)
-    /// from string into a Miniscript representation.
-    /// Use this to parse scripts with repeated pubkeys, timelock mixing, malleable
-    /// scripts without sig or scripts that can exceed resource limits.
-    /// Some of the analysis guarantees of miniscript are lost when dealing with
-    /// insane scripts. In general, in a multi-party setting users should only
-    /// accept sane scripts.
-    pub fn from_str_insane(s: &str) -> Result<Miniscript<Pk, Ctx>, Error> {
-        Miniscript::from_str_ext(s, &ExtParams::insane())
+    /// Attempt to parse a Miniscript, checking only for consensus compatibility,
+    /// and no other checks.
+    ///
+    /// It is not recommended to use scripts which require this function in order
+    /// to parse, especially in a multiparty setting.
+    pub fn from_str_insane(s: &str) -> Result<Self, Error> {
+        Miniscript::from_str_with_validation_params(s, &Ctx::CONSENSUS)
     }
 
-    /// Attempt to parse an Miniscripts that don't follow the spec.
-    /// Use this to parse scripts with repeated pubkeys, timelock mixing, malleable
-    /// scripts, raw pubkey hashes without sig or scripts that can exceed resource limits.
-    ///
-    /// Use [`ExtParams`] builder to specify the types of non-sane rules to allow while parsing.
-    pub fn from_str_ext(s: &str, ext: &ExtParams) -> Result<Miniscript<Pk, Ctx>, Error> {
+    /// Attempt to parse a Miniscript, specifying which validation parameters to apply.
+    pub fn from_str_with_validation_params(
+        s: &str,
+        params: &ValidationParams,
+    ) -> Result<Self, Error> {
         // This checks for invalid ASCII chars
         let top = expression::Tree::from_str(s)?;
         let ms: Miniscript<Pk, Ctx> = expression::FromTree::from_tree(top.root())?;
-        ms.ext_check(ext)?;
-
-        if ms.ty.corr.base != types::Base::B {
-            Err(Error::NonTopLevel(format!("{:?}", ms)))
-        } else {
-            Ok(ms)
-        }
+        ms.validate(params).map_err(Error::Validation)?;
+        Ok(ms)
     }
 }
 
@@ -1199,7 +1190,7 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> str::FromStr for Miniscript<Pk, Ctx> {
     /// See [Miniscript::from_str_insane] to parse scripts from string that
     /// do not clear the [Miniscript::sanity_check] checks.
     fn from_str(s: &str) -> Result<Miniscript<Pk, Ctx>, Error> {
-        let ms = Self::from_str_ext(s, &ExtParams::sane())?;
+        let ms = Self::from_str_with_validation_params(s, &Ctx::SANE)?;
         Ok(ms)
     }
 }
@@ -1228,13 +1219,12 @@ mod tests {
     use bitcoin::taproot::TapLeafHash;
     use sync::Arc;
 
-    use super::{Miniscript, ScriptContext, Segwitv0, Tap};
+    use super::*;
     use crate::miniscript::{types, Terminal};
     use crate::policy::Liftable;
-    use crate::prelude::*;
     use crate::test_utils::{StrKeyTranslator, StrXOnlyKeyTranslator};
     use crate::{
-        hex_script, BareCtx, Error, ExtParams, Legacy, RelLockTime, Satisfier, ToPublicKey,
+        hex_script, BareCtx, Error, Legacy, RelLockTime, Satisfier, ToPublicKey, ValidationError,
     };
 
     type Segwitv0Script = Miniscript<bitcoin::PublicKey, Segwitv0>;
@@ -1841,7 +1831,7 @@ mod tests {
         // Test that parsing raw hash160 from string does not work without extra features
         SegwitMs::from_str(ms_str).unwrap_err();
         SegwitMs::from_str_insane(ms_str).unwrap_err();
-        let ms = SegwitMs::from_str_ext(ms_str, &ExtParams::allow_all()).unwrap();
+        let ms = SegwitMs::from_str_with_validation_params(ms_str, &ValidationParams::MAX).unwrap();
 
         let script = ms.encode();
         // The same test, but parsing from script
@@ -1879,7 +1869,7 @@ mod tests {
     fn duplicate_keys() {
         // You cannot parse a Miniscript that has duplicate keys
         let err = Miniscript::<String, Segwitv0>::from_str("and_v(v:pk(A),pk(A))").unwrap_err();
-        assert!(matches!(err, Error::AnalysisError(crate::AnalysisError::RepeatedPubkeys)));
+        assert!(matches!(err, Error::Validation(ValidationError::DuplicateKeys)));
 
         // ...though you can parse one with from_str_insane
         let ok_insane =
@@ -1902,10 +1892,7 @@ mod tests {
             "and_v(v:and_v(v:older(4194304),pk(A)),and_v(v:older(1),pk(B)))",
         )
         .unwrap_err();
-        assert!(matches!(
-            err,
-            Error::AnalysisError(crate::AnalysisError::HeightTimelockCombination)
-        ));
+        assert!(matches!(err, Error::Validation(ValidationError::MixedTimeLocks)));
 
         // Though you can in an or() rather than and()
         let ok_or = Miniscript::<String, Segwitv0>::from_str(
@@ -1929,6 +1916,15 @@ mod tests {
             ok_insane.lift().unwrap_err(),
             Error::LiftError(crate::policy::LiftError::HeightTimelockCombination)
         ));
+        // nor can it have sane rules applied to it
+        assert_eq!(
+            ok_insane.validate(&ValidationParams::SANE).unwrap_err(),
+            ValidationError::MixedTimeLocks,
+        );
+        assert_eq!(
+            ok_insane.validate(&ValidationParams::SANE).unwrap_err(),
+            ValidationError::MixedTimeLocks,
+        );
     }
 
     #[test]
