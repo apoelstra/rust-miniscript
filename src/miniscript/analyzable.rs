@@ -212,23 +212,4 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     pub fn contains_raw_pkh(&self) -> bool {
         self.iter().any(|ms| matches!(ms.node, Terminal::RawPkH(_)))
     }
-
-    /// Check whether the miniscript follows the given Extra policy [`ExtParams`]
-    pub fn ext_check(&self, ext: &ExtParams) -> Result<(), AnalysisError> {
-        if !ext.top_unsafe && !self.requires_sig() {
-            Err(AnalysisError::SiglessBranch)
-        } else if !ext.malleability && !self.is_non_malleable() {
-            Err(AnalysisError::Malleable)
-        } else if !ext.resource_limitations && !self.within_resource_limits() {
-            Err(AnalysisError::BranchExceedResouceLimits)
-        } else if !ext.repeated_pk && self.has_repeated_keys() {
-            Err(AnalysisError::RepeatedPubkeys)
-        } else if !ext.timelock_mixing && self.has_mixed_timelocks() {
-            Err(AnalysisError::HeightTimelockCombination)
-        } else if !ext.raw_pkh && self.contains_raw_pkh() {
-            Err(AnalysisError::ContainsRawPkh)
-        } else {
-            Ok(())
-        }
-    }
 }

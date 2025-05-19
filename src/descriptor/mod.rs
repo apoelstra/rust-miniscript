@@ -24,7 +24,7 @@ use sync::Arc;
 use crate::expression::FromTree as _;
 use crate::miniscript::decode::Terminal;
 use crate::miniscript::limits::MAX_PUBKEYS_PER_MULTISIG;
-use crate::miniscript::{satisfy, Legacy, Miniscript, Segwitv0};
+use crate::miniscript::{satisfy, Legacy, Miniscript, ScriptContext as _, Segwitv0, Tap};
 use crate::plan::{AssetProvider, Plan};
 use crate::prelude::*;
 use crate::{
@@ -1032,7 +1032,8 @@ impl<Pk: FromStrKey> FromStr for Descriptor<Pk> {
         if let Descriptor::Tr(ref inner) = ret {
             for item in inner.leaves() {
                 item.miniscript()
-                    .ext_check(&crate::miniscript::analyzable::ExtParams::sane())?;
+                    .validate(&Tap::SANE)
+                    .map_err(Error::Validation)?;
             }
         }
         Ok(ret)
