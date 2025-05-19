@@ -22,7 +22,7 @@ use crate::prelude::*;
 use crate::util::varint_len;
 use crate::{
     Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, Satisfier, Segwitv0, Threshold,
-    ToPublicKey, TranslateErr, Translator,
+    ToPublicKey, TranslateErr, Translator, ValidationError,
 };
 /// A Segwitv0 wsh descriptor
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -230,7 +230,7 @@ pub enum WshInner<Pk: MiniscriptKey> {
 }
 
 impl<Pk: MiniscriptKey> Liftable<Pk> for Wsh<Pk> {
-    fn lift(&self) -> Result<semantic::Policy<Pk>, Error> {
+    fn lift(&self) -> Result<semantic::Policy<Pk>, ValidationError> {
         match self.inner {
             WshInner::SortedMulti(ref smv) => smv.lift(),
             WshInner::Ms(ref ms) => ms.lift(),
@@ -460,7 +460,7 @@ impl<Pk: MiniscriptKey> fmt::Display for Wpkh<Pk> {
 }
 
 impl<Pk: MiniscriptKey> Liftable<Pk> for Wpkh<Pk> {
-    fn lift(&self) -> Result<semantic::Policy<Pk>, Error> {
+    fn lift(&self) -> Result<semantic::Policy<Pk>, ValidationError> {
         Ok(semantic::Policy::Key(self.pk.clone()))
     }
 }

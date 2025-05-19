@@ -25,7 +25,7 @@ use crate::prelude::*;
 use crate::util::{varint_len, witness_to_scriptsig};
 use crate::{
     push_opcode_size, Error, ForEachKey, FromStrKey, Legacy, Miniscript, MiniscriptKey, Satisfier,
-    Segwitv0, Threshold, ToPublicKey, TranslateErr, Translator,
+    Segwitv0, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
 };
 
 /// A Legacy p2sh Descriptor
@@ -49,7 +49,7 @@ pub enum ShInner<Pk: MiniscriptKey> {
 }
 
 impl<Pk: MiniscriptKey> Liftable<Pk> for Sh<Pk> {
-    fn lift(&self) -> Result<semantic::Policy<Pk>, Error> {
+    fn lift(&self) -> Result<semantic::Policy<Pk>, ValidationError> {
         match self.inner {
             ShInner::Wsh(ref wsh) => wsh.lift(),
             ShInner::Wpkh(ref pk) => Ok(semantic::Policy::Key(pk.as_inner().clone())),

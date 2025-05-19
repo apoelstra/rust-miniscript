@@ -1871,10 +1871,8 @@ mod tests {
         // ...though you can parse one with from_str_insane
         let ok_insane =
             Miniscript::<String, Segwitv0>::from_str_insane("and_v(v:pk(A),pk(A))").unwrap();
-        // ...it can be lifted, though it's unclear whether this is a deliberate
-        // choice or just an accident. It seems weird given that duplicate public
-        // keys are forbidden in several other places.
-        ok_insane.lift().unwrap();
+        // ...but you cannot then lift it.
+        ok_insane.lift().unwrap_err();
     }
 
     #[test]
@@ -1899,10 +1897,7 @@ mod tests {
         )
         .unwrap();
         // ...but this cannot lifted
-        assert!(matches!(
-            ok_insane.lift().unwrap_err(),
-            Error::LiftError(crate::policy::LiftError::HeightTimelockCombination)
-        ));
+        assert!(matches!(ok_insane.lift().unwrap_err(), ValidationError::MixedTimeLocks,));
         // nor can it have sane rules applied to it
         assert_eq!(
             ok_insane.validate(&ValidationParams::SANE).unwrap_err(),

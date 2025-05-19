@@ -10,15 +10,14 @@ use super::checksum;
 use crate::descriptor::DefiniteDescriptorKey;
 use crate::expression::{self, FromTree};
 use crate::miniscript::satisfy::{Placeholder, Satisfaction, SchnorrSigType, Witness};
-use crate::miniscript::Miniscript;
 use crate::plan::AssetProvider;
 use crate::policy::semantic::Policy;
 use crate::policy::Liftable;
 use crate::prelude::*;
 use crate::util::{varint_len, witness_size};
 use crate::{
-    Error, ForEachKey, FromStrKey, MiniscriptKey, ParseError, Satisfier, ScriptContext, Tap,
-    Threshold, ToPublicKey, TranslateErr, Translator,
+    Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, ParseError, Satisfier, ScriptContext,
+    Tap, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
 };
 
 mod spend_info;
@@ -419,7 +418,7 @@ impl<Pk: MiniscriptKey> fmt::Display for Tr<Pk> {
 }
 
 impl<Pk: MiniscriptKey> Liftable<Pk> for Tr<Pk> {
-    fn lift(&self) -> Result<Policy<Pk>, Error> {
+    fn lift(&self) -> Result<Policy<Pk>, ValidationError> {
         match &self.tree {
             Some(root) => Ok(Policy::Thresh(Threshold::or(
                 Arc::new(Policy::Key(self.internal_key.clone())),

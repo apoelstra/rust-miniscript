@@ -20,7 +20,7 @@ use crate::prelude::*;
 use crate::sync::Arc;
 use crate::{
     expression, policy, script_num_size, Error, ForEachKey, Miniscript, MiniscriptKey, Satisfier,
-    Threshold, ToPublicKey, TranslateErr, Translator,
+    Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
 };
 
 /// Contents of a "sortedmulti" descriptor
@@ -193,7 +193,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
 }
 
 impl<Pk: MiniscriptKey, Ctx: ScriptContext> policy::Liftable<Pk> for SortedMultiVec<Pk, Ctx> {
-    fn lift(&self) -> Result<policy::semantic::Policy<Pk>, Error> {
+    fn lift(&self) -> Result<policy::semantic::Policy<Pk>, ValidationError> {
         Ok(policy::semantic::Policy::Thresh(
             self.inner
                 .map_ref(|pk| Arc::new(policy::semantic::Policy::Key(pk.clone())))

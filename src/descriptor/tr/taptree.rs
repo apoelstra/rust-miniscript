@@ -8,7 +8,7 @@ use crate::miniscript::context::Tap;
 use crate::policy::{Liftable, Semantic};
 use crate::prelude::Vec;
 use crate::sync::Arc;
-use crate::{Miniscript, MiniscriptKey, Threshold, ToPublicKey};
+use crate::{Miniscript, MiniscriptKey, Threshold, ToPublicKey, ValidationError};
 
 /// Tried to construct Taproot tree which was too deep.
 #[derive(PartialEq, Eq, Debug)]
@@ -74,7 +74,7 @@ impl<Pk: MiniscriptKey> TapTree<Pk> {
 }
 
 impl<Pk: MiniscriptKey> Liftable<Pk> for TapTree<Pk> {
-    fn lift(&self) -> Result<Semantic<Pk>, crate::Error> {
+    fn lift(&self) -> Result<Semantic<Pk>, ValidationError> {
         let thresh_vec = self
             .leaves()
             .map(|item| item.miniscript().lift().map(Arc::new))

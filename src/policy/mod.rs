@@ -9,9 +9,6 @@
 //! The format represents EC public keys abstractly to allow wallets to replace
 //! these with BIP32 paths, pay-to-contract instructions, etc.
 //!
-use core::fmt;
-#[cfg(feature = "std")]
-use std::error;
 
 #[cfg(feature = "compiler")]
 pub mod compiler;
@@ -26,7 +23,7 @@ use crate::miniscript::{Miniscript, ScriptContext};
 use crate::sync::Arc;
 #[cfg(all(not(feature = "std"), not(test)))]
 use crate::Vec;
-use crate::{Error, MiniscriptKey, Terminal, Threshold};
+use crate::{MiniscriptKey, Terminal, Threshold, ValidationError, ValidationParams};
 
 /// Policy entailment algorithm maximum number of terminals allowed.
 const ENTAILMENT_MAX_TERMINALS: usize = 20;
@@ -49,69 +46,14 @@ const ENTAILMENT_MAX_TERMINALS: usize = 20;
 /// policies.
 pub trait Liftable<Pk: MiniscriptKey> {
     /// Converts this object into an abstract policy.
-    fn lift(&self) -> Result<Semantic<Pk>, Error>;
-}
-
-/// Error occurring during lifting.
-#[derive(Copy, Clone, PartialEq, Eq, Debug, Hash)]
-pub enum LiftError {
-    /// Cannot lift policies that have a combination of height and timelocks.
-    HeightTimelockCombination,
-    /// Duplicate public keys.
-    BranchExceedResourceLimits,
-    /// Cannot lift raw descriptors.
-    RawDescriptorLift,
-}
-
-impl fmt::Display for LiftError {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match *self {
-            LiftError::HeightTimelockCombination => {
-                f.write_str("Cannot lift policies that have a heightlock and timelock combination")
-            }
-            LiftError::BranchExceedResourceLimits => f.write_str(
-                "Cannot lift policies containing one branch that exceeds resource limits",
-            ),
-            LiftError::RawDescriptorLift => f.write_str("Cannot lift raw descriptors"),
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl error::Error for LiftError {
-    fn cause(&self) -> Option<&dyn error::Error> {
-        use self::LiftError::*;
-
-        match self {
-            HeightTimelockCombination | BranchExceedResourceLimits | RawDescriptorLift => None,
-        }
-    }
-}
-
-impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
-    /// Lifting corresponds to conversion of a miniscript into a [`Semantic`]
-    /// policy for human readable or machine analysis. However, naively lifting
-    /// miniscripts can result in incorrect interpretations that don't
-    /// correspond to the underlying semantics when we try to spend them on
-    /// bitcoin network. This can occur if the miniscript contains:
-    /// 1. A combination of timelocks
-    /// 2. A spend that exceeds resource limits
-    pub fn lift_check(&self) -> Result<(), LiftError> {
-        if !self.within_resource_limits() {
-            Err(LiftError::BranchExceedResourceLimits)
-        } else if self.has_mixed_timelocks() {
-            Err(LiftError::HeightTimelockCombination)
-        } else {
-            Ok(())
-        }
-    }
+    fn lift(&self) -> Result<Semantic<Pk>, ValidationError>;
 }
 
 impl<Pk: MiniscriptKey, Ctx: ScriptContext> Liftable<Pk> for Miniscript<Pk, Ctx> {
-    fn lift(&self) -> Result<Semantic<Pk>, Error> {
-        // check whether the root miniscript can have a spending path that is
-        // a combination of heightlock and timelock
-        self.lift_check()?;
+    fn lift(&self) -> Result<Semantic<Pk>, ValidationError> {
+        // The "sane" rules are pretty-much defined as "the rules that must be followed
+        // for lifting to work and analysis to make sense"
+        self.validate(&ValidationParams::SANE)?;
 
         let mut stack = vec![];
         for item in self.rtl_post_order_iter() {
@@ -119,9 +61,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Liftable<Pk> for Miniscript<Pk, Ctx>
                 Terminal::PkK(ref pk) | Terminal::PkH(ref pk) => {
                     Arc::new(Semantic::Key(pk.clone()))
                 }
-                Terminal::RawPkH(ref _pkh) => {
-                    return Err(Error::LiftError(LiftError::RawDescriptorLift))
-                }
+                Terminal::RawPkH(ref _pkh) => unreachable!("checked by self.validate above"),
                 Terminal::After(t) => Arc::new(Semantic::After(t)),
                 Terminal::Older(t) => Arc::new(Semantic::Older(t)),
                 Terminal::Sha256(ref h) => Arc::new(Semantic::Sha256(h.clone())),
@@ -174,7 +114,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Liftable<Pk> for Miniscript<Pk, Ctx>
 }
 
 impl<Pk: MiniscriptKey> Liftable<Pk> for Descriptor<Pk> {
-    fn lift(&self) -> Result<Semantic<Pk>, Error> {
+    fn lift(&self) -> Result<Semantic<Pk>, ValidationError> {
         match *self {
             Descriptor::Bare(ref bare) => bare.lift(),
             Descriptor::Pkh(ref pkh) => pkh.lift(),
@@ -187,14 +127,12 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Descriptor<Pk> {
 }
 
 impl<Pk: MiniscriptKey> Liftable<Pk> for Semantic<Pk> {
-    fn lift(&self) -> Result<Semantic<Pk>, Error> { Ok(self.clone()) }
+    fn lift(&self) -> Result<Semantic<Pk>, ValidationError> { Ok(self.clone()) }
 }
 
 impl<Pk: MiniscriptKey> Liftable<Pk> for Concrete<Pk> {
-    fn lift(&self) -> Result<Semantic<Pk>, Error> {
-        // do not lift if there is a possible satisfaction
-        // involving combination of timelocks and heightlocks
-        self.check_timelocks().map_err(Error::ConcretePolicy)?;
+    fn lift(&self) -> Result<Semantic<Pk>, ValidationError> {
+        self.validate(&ValidationParams::SANE)?;
         let ret = match *self {
             Concrete::Unsatisfiable => Semantic::Unsatisfiable,
             Concrete::Trivial => Semantic::Trivial,
@@ -206,13 +144,13 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Concrete<Pk> {
             Concrete::Ripemd160(ref h) => Semantic::Ripemd160(h.clone()),
             Concrete::Hash160(ref h) => Semantic::Hash160(h.clone()),
             Concrete::And(ref subs) => {
-                let semantic_subs: Result<Vec<Semantic<Pk>>, Error> =
+                let semantic_subs: Result<Vec<Semantic<Pk>>, ValidationError> =
                     subs.iter().map(Liftable::lift).collect();
                 let semantic_subs = semantic_subs?.into_iter().map(Arc::new).collect();
                 Semantic::Thresh(Threshold::new(2, semantic_subs).unwrap())
             }
             Concrete::Or(ref subs) => {
-                let semantic_subs: Result<Vec<Semantic<Pk>>, Error> =
+                let semantic_subs: Result<Vec<Semantic<Pk>>, ValidationError> =
                     subs.iter().map(|(_p, sub)| sub.lift()).collect();
                 let semantic_subs = semantic_subs?.into_iter().map(Arc::new).collect();
                 Semantic::Thresh(Threshold::new(1, semantic_subs).unwrap())
@@ -226,7 +164,7 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Concrete<Pk> {
     }
 }
 impl<Pk: MiniscriptKey> Liftable<Pk> for Arc<Concrete<Pk>> {
-    fn lift(&self) -> Result<Semantic<Pk>, Error> { self.as_ref().lift() }
+    fn lift(&self) -> Result<Semantic<Pk>, ValidationError> { self.as_ref().lift() }
 }
 
 #[cfg(test)]
@@ -272,6 +210,12 @@ mod tests {
         // thresh with k = 2
         assert!(ConcretePol::from_str("thresh(2,after(1000000000),after(100),pk())").is_err());
     }
+
+    #[test]
+    fn parse_duplicate_pubkeys() {
+        assert!(ConcretePol::from_str("or(and(pk(A),pk(B)),and(pk(A),pk(D)))").is_err());
+    }
+
     #[test]
     fn policy_rtt_tests() {
         concrete_policy_rtt("pk()");
@@ -396,14 +340,6 @@ mod tests {
             let expected_descriptor =
                 Descriptor::new_tr(unspendable_key.clone(), Some(tree)).unwrap();
             assert_eq!(descriptor, expected_descriptor);
-        }
-
-        {
-            // Invalid policy compilation (Duplicate PubKeys)
-            let policy: Concrete<String> = policy_str!("or(and(pk(A),pk(B)),and(pk(A),pk(D)))");
-            let descriptor = policy.compile_tr(Some(unspendable_key.clone()));
-
-            assert_eq!(descriptor.unwrap_err().to_string(), "Policy contains duplicate keys");
         }
 
         // Non-trivial multi-node compilation

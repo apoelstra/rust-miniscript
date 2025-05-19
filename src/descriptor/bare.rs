@@ -22,7 +22,7 @@ use crate::prelude::*;
 use crate::util::{varint_len, witness_to_scriptsig};
 use crate::{
     BareCtx, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, Satisfier, ToPublicKey,
-    TranslateErr, Translator,
+    TranslateErr, Translator, ValidationError,
 };
 
 /// Create a Bare Descriptor. That is descriptor that is
@@ -165,7 +165,7 @@ impl<Pk: MiniscriptKey> fmt::Display for Bare<Pk> {
 }
 
 impl<Pk: MiniscriptKey> Liftable<Pk> for Bare<Pk> {
-    fn lift(&self) -> Result<semantic::Policy<Pk>, Error> { self.ms.lift() }
+    fn lift(&self) -> Result<semantic::Policy<Pk>, ValidationError> { self.ms.lift() }
 }
 
 impl<Pk: FromStrKey> FromTree for Bare<Pk> {
@@ -357,7 +357,7 @@ impl<Pk: MiniscriptKey> fmt::Display for Pkh<Pk> {
 }
 
 impl<Pk: MiniscriptKey> Liftable<Pk> for Pkh<Pk> {
-    fn lift(&self) -> Result<semantic::Policy<Pk>, Error> {
+    fn lift(&self) -> Result<semantic::Policy<Pk>, ValidationError> {
         Ok(semantic::Policy::Key(self.pk.clone()))
     }
 }
