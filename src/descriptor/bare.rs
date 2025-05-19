@@ -35,9 +35,8 @@ pub struct Bare<Pk: MiniscriptKey> {
 
 impl<Pk: MiniscriptKey> Bare<Pk> {
     /// Create a new raw descriptor
-    pub fn new(ms: Miniscript<Pk, BareCtx>) -> Result<Self, Error> {
-        // do the top-level checks
-        BareCtx::top_level_checks(&ms)?;
+    pub fn new(ms: Miniscript<Pk, BareCtx>) -> Result<Self, ValidationError> {
+        ms.validate(&BareCtx::SANE)?;
         Ok(Self { ms })
     }
 
@@ -91,7 +90,9 @@ impl<Pk: MiniscriptKey> Bare<Pk> {
     where
         T: Translator<Pk>,
     {
-        Bare::new(self.ms.translate_pk(t)?).map_err(TranslateErr::OuterError)
+        Bare::new(self.ms.translate_pk(t)?)
+            .map_err(Error::Validation)
+            .map_err(TranslateErr::OuterError)
     }
 }
 
@@ -171,8 +172,7 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Bare<Pk> {
 impl<Pk: FromStrKey> FromTree for Bare<Pk> {
     fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
         let sub = Miniscript::<Pk, BareCtx>::from_tree(root)?;
-        BareCtx::top_level_checks(&sub)?;
-        Bare::new(sub)
+        Bare::new(sub).map_err(Error::Validation)
     }
 }
 

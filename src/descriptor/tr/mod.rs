@@ -16,8 +16,8 @@ use crate::policy::Liftable;
 use crate::prelude::*;
 use crate::util::{varint_len, witness_size};
 use crate::{
-    Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, ParseError, Satisfier, ScriptContext,
-    Tap, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
+    Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, ParseError, Satisfier,
+    ScriptContext as _, Tap, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
 };
 
 mod spend_info;
@@ -92,8 +92,8 @@ impl<Pk: MiniscriptKey> hash::Hash for Tr<Pk> {
 
 impl<Pk: MiniscriptKey> Tr<Pk> {
     /// Create a new [`Tr`] descriptor from internal key and [`TapTree`]
-    pub fn new(internal_key: Pk, tree: Option<TapTree<Pk>>) -> Result<Self, Error> {
-        Tap::check_pk(&internal_key)?;
+    pub fn new(internal_key: Pk, tree: Option<TapTree<Pk>>) -> Result<Self, ValidationError> {
+        Tap::SANE.validate_pk(&internal_key)?;
         Ok(Self { internal_key, tree, spend_info: Mutex::new(None) })
     }
 
@@ -250,8 +250,9 @@ impl<Pk: MiniscriptKey> Tr<Pk> {
             Some(tree) => Some(tree.translate_pk(translate)?),
             None => None,
         };
-        let translate_desc =
-            Tr::new(translate.pk(&self.internal_key)?, tree).map_err(TranslateErr::OuterError)?;
+        let translate_desc = Tr::new(translate.pk(&self.internal_key)?, tree)
+            .map_err(Error::Validation)
+            .map_err(TranslateErr::OuterError)?;
         Ok(translate_desc)
     }
 }
@@ -360,7 +361,7 @@ impl<Pk: FromStrKey> crate::expression::FromTree for Tr<Pk> {
             .map_err(Error::Parse)?;
 
         let tap_tree = match root_children.next() {
-            None => return Tr::new(internal_key, None),
+            None => return Tr::new(internal_key, None).map_err(Error::Validation),
             Some(tree) => tree,
         };
 
@@ -391,7 +392,7 @@ impl<Pk: FromStrKey> crate::expression::FromTree for Tr<Pk> {
                 tap_tree_iter.skip_descendants();
             }
         }
-        Tr::new(internal_key, Some(tree_builder.finalize()))
+        Tr::new(internal_key, Some(tree_builder.finalize())).map_err(Error::Validation)
     }
 }
 

@@ -298,7 +298,8 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
                             }
                         }
                     },
-                )?;
+                )
+                .map_err(Error::Validation)?;
                 Ok(tree)
             }
         }
@@ -326,10 +327,15 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
             (false, _) => Err(Error::from(CompilerError::TopLevelNonSafe)),
             (_, false) => Err(Error::from(CompilerError::ImpossibleNonMalleableCompilation)),
             _ => match desc_ctx {
-                DescriptorCtx::Bare => Descriptor::new_bare(compiler::best_compilation(self)?),
-                DescriptorCtx::Sh => Descriptor::new_sh(compiler::best_compilation(self)?),
-                DescriptorCtx::Wsh => Descriptor::new_wsh(compiler::best_compilation(self)?),
-                DescriptorCtx::ShWsh => Descriptor::new_sh_wsh(compiler::best_compilation(self)?),
+                DescriptorCtx::Bare => Descriptor::new_bare(compiler::best_compilation(self)?)
+                    .map_err(Error::Validation),
+                DescriptorCtx::Sh => {
+                    Descriptor::new_sh(compiler::best_compilation(self)?).map_err(Error::Validation)
+                }
+                DescriptorCtx::Wsh => Descriptor::new_wsh(compiler::best_compilation(self)?)
+                    .map_err(Error::Validation),
+                DescriptorCtx::ShWsh => Descriptor::new_sh_wsh(compiler::best_compilation(self)?)
+                    .map_err(Error::Validation),
                 DescriptorCtx::Tr(unspendable_key) => self
                     .compile_tr(unspendable_key)
                     .map_err(Error::CompilerError),

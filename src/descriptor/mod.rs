@@ -184,28 +184,28 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
     /// Create a new sh for a given redeem script
     /// Errors when miniscript exceeds resource limits under p2sh context
     /// or does not type check at the top level
-    pub fn new_sh(ms: Miniscript<Pk, Legacy>) -> Result<Self, Error> {
+    pub fn new_sh(ms: Miniscript<Pk, Legacy>) -> Result<Self, ValidationError> {
         Ok(Descriptor::Sh(Sh::new(ms)?))
     }
 
     /// Create a new wsh descriptor from witness script
     /// Errors when miniscript exceeds resource limits under p2sh context
     /// or does not type check at the top level
-    pub fn new_wsh(ms: Miniscript<Pk, Segwitv0>) -> Result<Self, Error> {
+    pub fn new_wsh(ms: Miniscript<Pk, Segwitv0>) -> Result<Self, ValidationError> {
         Ok(Descriptor::Wsh(Wsh::new(ms)?))
     }
 
     /// Create a new sh wrapped wsh descriptor with witness script
     /// Errors when miniscript exceeds resource limits under wsh context
     /// or does not type check at the top level
-    pub fn new_sh_wsh(ms: Miniscript<Pk, Segwitv0>) -> Result<Self, Error> {
+    pub fn new_sh_wsh(ms: Miniscript<Pk, Segwitv0>) -> Result<Self, ValidationError> {
         Ok(Descriptor::Sh(Sh::new_wsh(ms)?))
     }
 
     /// Create a new bare descriptor from witness script
     /// Errors when miniscript exceeds resource limits under bare context
     /// or does not type check at the top level
-    pub fn new_bare(ms: Miniscript<Pk, BareCtx>) -> Result<Self, Error> {
+    pub fn new_bare(ms: Miniscript<Pk, BareCtx>) -> Result<Self, ValidationError> {
         Ok(Descriptor::Bare(Bare::new(ms)?))
     }
 
@@ -247,7 +247,7 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
 
     /// Create new tr descriptor
     /// Errors when miniscript exceeds resource limits under Tap context
-    pub fn new_tr(key: Pk, script: Option<tr::TapTree<Pk>>) -> Result<Self, Error> {
+    pub fn new_tr(key: Pk, script: Option<tr::TapTree<Pk>>) -> Result<Self, ValidationError> {
         Ok(Descriptor::Tr(Tr::new(key, script)?))
     }
 
@@ -1123,13 +1123,15 @@ mod tests {
         // in terms of the in-memory representation -- OrI(False, False).
         // Test that the way we display the ambiguous fragment doesn't
         // change, in case somebody somehow is depending on it.
-        let desc = StdDescriptor::from_str("sh(u:0)").unwrap();
-        assert_eq!("sh(u:0)#ncq3yf9h", desc.to_string());
+        let desc = StdDescriptor::from_str("wsh(u:0)").unwrap();
+        assert_eq!("wsh(u:0)#6mwq40tt", desc.to_string());
 
         // This is a regression test for https://github.com/rust-bitcoin/rust-miniscript/pull/735
-        // which was found at the same time. It's just a bug plain and simple.
-        let desc = StdDescriptor::from_str("sh(and_n(u:0,1))").unwrap();
-        assert_eq!("sh(and_n(u:0,1))#5j5tw8nm", desc.to_string());
+        // which was found at the same time. It's just a bug plain and simple. (We were
+        // encoding and_n as "and_b".)
+        let desc_str = format!("wsh(and_n({TEST_PK},1))#a23r7pua");
+        let desc = desc_str.parse::<StdDescriptor>().unwrap();
+        assert_eq!(desc_str, desc.to_string());
     }
 
     #[test]
@@ -1517,7 +1519,9 @@ mod tests {
 
     #[test]
     fn after_is_cltv() {
-        let descriptor = Descriptor::<bitcoin::PublicKey>::from_str("wsh(after(1000))").unwrap();
+        let descriptor = format!("wsh(and_v(v:{TEST_PK},after(1000)))")
+            .parse::<Descriptor<bitcoin::PublicKey>>()
+            .unwrap();
         let script = descriptor.explicit_script().unwrap();
 
         let actual_instructions: Vec<_> = script.instructions().collect();
@@ -1528,7 +1532,9 @@ mod tests {
 
     #[test]
     fn older_is_csv() {
-        let descriptor = Descriptor::<bitcoin::PublicKey>::from_str("wsh(older(1000))").unwrap();
+        let descriptor = format!("wsh(and_v(v:{TEST_PK},older(1000)))")
+            .parse::<Descriptor<bitcoin::PublicKey>>()
+            .unwrap();
         let script = descriptor.explicit_script().unwrap();
 
         let actual_instructions: Vec<_> = script.instructions().collect();
@@ -2069,17 +2075,17 @@ pk(03f28773c2d975288bc7d1d205c3748651b075fbc6610e58cddeeddf8f19405aa8))";
             "sh(wpkh(020000000000000000000000000000000000000000000000000000000000000002))",
         );
 
-        let wsh = StdDescriptor::from_str("wsh(1)").unwrap();
-        assert_eq!(format!("{}", wsh), "wsh(1)#mrg7xj7p");
-        assert_eq!(format!("{:#}", wsh), "wsh(1)");
+        let wsh = StdDescriptor::from_str("wsh(0)").unwrap();
+        assert_eq!(format!("{}", wsh), "wsh(0)#a0qjqdfq");
+        assert_eq!(format!("{:#}", wsh), "wsh(0)");
 
-        let sh = StdDescriptor::from_str("sh(1)").unwrap();
-        assert_eq!(format!("{}", sh), "sh(1)#l8r75ggs");
-        assert_eq!(format!("{:#}", sh), "sh(1)");
+        let sh = StdDescriptor::from_str("sh(0)").unwrap();
+        assert_eq!(format!("{}", sh), "sh(0)#ettjjhl3");
+        assert_eq!(format!("{:#}", sh), "sh(0)");
 
-        let shwsh = StdDescriptor::from_str("sh(wsh(1))").unwrap();
-        assert_eq!(format!("{}", shwsh), "sh(wsh(1))#hcyfl07f");
-        assert_eq!(format!("{:#}", shwsh), "sh(wsh(1))");
+        let shwsh = StdDescriptor::from_str("sh(wsh(0))").unwrap();
+        assert_eq!(format!("{}", shwsh), "sh(wsh(0))#f45zwpau");
+        assert_eq!(format!("{:#}", shwsh), "sh(wsh(0))");
 
         let tr = StdDescriptor::from_str(
             "tr(020000000000000000000000000000000000000000000000000000000000000002)",
@@ -2137,11 +2143,11 @@ pk(03f28773c2d975288bc7d1d205c3748651b075fbc6610e58cddeeddf8f19405aa8))";
         Descriptor::<DescriptorPublicKey>::from_str(
             "wsh(or_i(pk(0202baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0a66a),1))",
         )
-        .unwrap();
+        .unwrap_err();
         Descriptor::<DescriptorPublicKey>::from_str(
             "sh(or_i(pk(0202baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0a66a),1))",
         )
-        .unwrap();
+        .unwrap_err();
         Descriptor::<DescriptorPublicKey>::from_str(
             "tr(02baaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa0a66a,1)",
         )

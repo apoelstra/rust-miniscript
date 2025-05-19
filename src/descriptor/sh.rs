@@ -94,7 +94,7 @@ impl<Pk: FromStrKey> crate::expression::FromTree for Sh<Pk> {
             "sortedmulti" => ShInner::SortedMulti(SortedMultiVec::from_tree(top)?),
             _ => {
                 let sub = Miniscript::from_tree(top)?;
-                Legacy::top_level_checks(&sub)?;
+                sub.validate(&Legacy::SANE).map_err(Error::Validation)?;
                 ShInner::Ms(sub)
             }
         };
@@ -118,9 +118,8 @@ impl<Pk: MiniscriptKey> Sh<Pk> {
     pub fn as_inner(&self) -> &ShInner<Pk> { &self.inner }
 
     /// Create a new p2sh descriptor with the raw miniscript
-    pub fn new(ms: Miniscript<Pk, Legacy>) -> Result<Self, Error> {
-        // do the top-level checks
-        Legacy::top_level_checks(&ms)?;
+    pub fn new(ms: Miniscript<Pk, Legacy>) -> Result<Self, ValidationError> {
+        ms.validate(&Legacy::SANE)?;
         Ok(Self { inner: ShInner::Ms(ms) })
     }
 
@@ -135,7 +134,7 @@ impl<Pk: MiniscriptKey> Sh<Pk> {
     }
 
     /// Create a new p2sh wrapped wsh descriptor with the raw miniscript
-    pub fn new_wsh(ms: Miniscript<Pk, Segwitv0>) -> Result<Self, Error> {
+    pub fn new_wsh(ms: Miniscript<Pk, Segwitv0>) -> Result<Self, ValidationError> {
         Ok(Self { inner: ShInner::Wsh(Wsh::new(ms)?) })
     }
 

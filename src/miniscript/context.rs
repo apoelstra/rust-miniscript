@@ -14,7 +14,7 @@ use crate::miniscript::limits::{
     MAX_STACK_SIZE, MAX_STANDARD_P2WSH_SCRIPT_SIZE, MAX_STANDARD_P2WSH_STACK_ITEMS,
 };
 use crate::prelude::*;
-use crate::{hash256, Error, ForEachKey, Miniscript, MiniscriptKey, Terminal, ValidationParams};
+use crate::{hash256, Miniscript, MiniscriptKey, Terminal, ValidationParams};
 
 /// Error for Script Context
 #[derive(Clone, PartialEq, Eq, Debug)]
@@ -199,12 +199,6 @@ where
         _frag: &Terminal<Pk, Self>,
     ) -> Result<(), ScriptContextError>;
 
-    /// Each context has slightly different rules on what Pks are allowed in descriptors
-    /// Legacy/Bare does not allow x_only keys
-    /// Segwit does not allow uncompressed keys and x_only keys
-    /// Tapscript does not allow uncompressed keys
-    fn check_pk<Pk: MiniscriptKey>(pk: &Pk) -> Result<(), ScriptContextError>;
-
     /// Depending on script context, the size of a satifaction witness may slightly differ.
     fn max_satisfaction_size<Pk: MiniscriptKey>(ms: &Miniscript<Pk, Self>) -> Option<usize>;
     /// Depending on script Context, some of the Terminals might not
@@ -280,60 +274,6 @@ where
         Ok(())
     }
 
-    /// Check whether the top-level is type B
-    fn top_level_type_check<Pk: MiniscriptKey>(ms: &Miniscript<Pk, Self>) -> Result<(), Error> {
-        // (Ab)use `for_each_key` to record the number of derivation paths a multipath key has.
-        #[derive(PartialEq)]
-        enum MultipathLenChecker {
-            SinglePath,
-            MultipathLen(usize),
-            LenMismatch,
-        }
-
-        let mut checker = MultipathLenChecker::SinglePath;
-        ms.for_each_key(|key| {
-            match key.num_der_paths() {
-                0 | 1 => {}
-                n => match checker {
-                    MultipathLenChecker::SinglePath => {
-                        checker = MultipathLenChecker::MultipathLen(n);
-                    }
-                    MultipathLenChecker::MultipathLen(len) => {
-                        if len != n {
-                            checker = MultipathLenChecker::LenMismatch;
-                        }
-                    }
-                    MultipathLenChecker::LenMismatch => {}
-                },
-            }
-            true
-        });
-
-        if checker == MultipathLenChecker::LenMismatch {
-            return Err(Error::MultipathDescLenMismatch);
-        }
-        Ok(())
-    }
-
-    /// Other top level checks that are context specific
-    fn other_top_level_checks<Pk: MiniscriptKey>(_ms: &Miniscript<Pk, Self>) -> Result<(), Error> {
-        Ok(())
-    }
-
-    /// Check top level consensus rules.
-    // All the previous check_ were applied at each fragment while parsing script
-    // Because if any of sub-miniscripts failed the resource level check, the entire
-    // miniscript would also be invalid. However, there are certain checks like
-    // in Bare context, only c:pk(key) (P2PK),
-    // c:pk_h(key) (P2PKH), and thresh_m(k,...) up to n=3 are allowed
-    // that are only applicable at the top-level
-    // We can also combine the top-level check for Base::B here
-    // even though it does not depend on context, but helps in cleaner code
-    fn top_level_checks<Pk: MiniscriptKey>(ms: &Miniscript<Pk, Self>) -> Result<(), Error> {
-        Self::top_level_type_check(ms)?;
-        Self::other_top_level_checks(ms)
-    }
-
     /// The type of signature required for satisfaction
     // We need to context decide whether the serialize pk to 33 byte or 32 bytes.
     // And to decide which type of signatures to look for during satisfaction
@@ -391,27 +331,11 @@ impl ScriptContext for Legacy {
         }
     }
 
-    // Only compressed and uncompressed public keys are allowed in Legacy context
-    fn check_pk<Pk: MiniscriptKey>(pk: &Pk) -> Result<(), ScriptContextError> {
-        if pk.is_x_only_key() {
-            Err(ScriptContextError::XOnlyKeysNotAllowed(pk.to_string(), Self::name_str()))
-        } else {
-            Ok(())
-        }
-    }
-
     fn check_global_consensus_validity<Pk: MiniscriptKey>(
         ms: &Miniscript<Pk, Self>,
     ) -> Result<(), ScriptContextError> {
         // 1. Check the node first, throw an error on the language itself
         let node_checked = match ms.node {
-            Terminal::PkK(ref pk) => Self::check_pk(pk),
-            Terminal::Multi(ref thresh) => {
-                for pk in thresh.iter() {
-                    Self::check_pk(pk)?;
-                }
-                Ok(())
-            }
             Terminal::MultiA(..) => Err(ScriptContextError::MultiANotAllowed),
             _ => Ok(()),
         };
@@ -509,29 +433,11 @@ impl ScriptContext for Segwitv0 {
         Ok(())
     }
 
-    // No x-only keys or uncompressed keys in Segwitv0 context
-    fn check_pk<Pk: MiniscriptKey>(pk: &Pk) -> Result<(), ScriptContextError> {
-        if pk.is_uncompressed() {
-            Err(ScriptContextError::UncompressedKeysNotAllowed)
-        } else if pk.is_x_only_key() {
-            Err(ScriptContextError::XOnlyKeysNotAllowed(pk.to_string(), Self::name_str()))
-        } else {
-            Ok(())
-        }
-    }
-
     fn check_global_consensus_validity<Pk: MiniscriptKey>(
         ms: &Miniscript<Pk, Self>,
     ) -> Result<(), ScriptContextError> {
         // 1. Check the node first, throw an error on the language itself
         let node_checked = match ms.node {
-            Terminal::PkK(ref pk) => Self::check_pk(pk),
-            Terminal::Multi(ref thresh) => {
-                for pk in thresh.iter() {
-                    Self::check_pk(pk)?;
-                }
-                Ok(())
-            }
             Terminal::MultiA(..) => Err(ScriptContextError::MultiANotAllowed),
             _ => Ok(()),
         };
@@ -636,27 +542,11 @@ impl ScriptContext for Tap {
         Ok(())
     }
 
-    // No uncompressed keys in Tap context
-    fn check_pk<Pk: MiniscriptKey>(pk: &Pk) -> Result<(), ScriptContextError> {
-        if pk.is_uncompressed() {
-            Err(ScriptContextError::UncompressedKeysNotAllowed)
-        } else {
-            Ok(())
-        }
-    }
-
     fn check_global_consensus_validity<Pk: MiniscriptKey>(
         ms: &Miniscript<Pk, Self>,
     ) -> Result<(), ScriptContextError> {
         // 1. Check the node first, throw an error on the language itself
         let node_checked = match ms.node {
-            Terminal::PkK(ref pk) => Self::check_pk(pk),
-            Terminal::MultiA(ref thresh) => {
-                for pk in thresh.iter() {
-                    Self::check_pk(pk)?;
-                }
-                Ok(())
-            }
             Terminal::Multi(..) => Err(ScriptContextError::TaprootMultiDisabled),
             _ => Ok(()),
         };
@@ -761,27 +651,11 @@ impl ScriptContext for BareCtx {
         Ok(())
     }
 
-    // No x-only keys in Bare context
-    fn check_pk<Pk: MiniscriptKey>(pk: &Pk) -> Result<(), ScriptContextError> {
-        if pk.is_x_only_key() {
-            Err(ScriptContextError::XOnlyKeysNotAllowed(pk.to_string(), Self::name_str()))
-        } else {
-            Ok(())
-        }
-    }
-
     fn check_global_consensus_validity<Pk: MiniscriptKey>(
         ms: &Miniscript<Pk, Self>,
     ) -> Result<(), ScriptContextError> {
         // 1. Check the node first, throw an error on the language itself
         let node_checked = match ms.node {
-            Terminal::PkK(ref key) => Self::check_pk(key),
-            Terminal::Multi(ref thresh) => {
-                for pk in thresh.iter() {
-                    Self::check_pk(pk)?;
-                }
-                Ok(())
-            }
             Terminal::MultiA(..) => Err(ScriptContextError::MultiANotAllowed),
             _ => Ok(()),
         };
@@ -813,18 +687,6 @@ impl ScriptContext for BareCtx {
                 })
             }
             _ => Ok(()),
-        }
-    }
-
-    fn other_top_level_checks<Pk: MiniscriptKey>(ms: &Miniscript<Pk, Self>) -> Result<(), Error> {
-        match &ms.node {
-            Terminal::Check(ref ms) => match &ms.node {
-                Terminal::RawPkH(_pkh) => Ok(()),
-                Terminal::PkK(_pk) | Terminal::PkH(_pk) => Ok(()),
-                _ => Err(Error::NonStandardBareScript),
-            },
-            Terminal::Multi(ref thresh) if thresh.n() <= 3 => Ok(()),
-            _ => Err(Error::NonStandardBareScript),
         }
     }
 
@@ -866,9 +728,6 @@ impl ScriptContext for NoChecks {
     ) -> Result<(), ScriptContextError> {
         Ok(())
     }
-
-    // No checks in NoChecks
-    fn check_pk<Pk: MiniscriptKey>(_pk: &Pk) -> Result<(), ScriptContextError> { Ok(()) }
 
     fn check_global_policy_validity<Pk: MiniscriptKey>(
         _ms: &Miniscript<Pk, Self>,
@@ -923,19 +782,6 @@ impl ScriptContext for NoChecks {
         Self::check_local_consensus_validity(ms)?;
         Self::check_local_policy_validity(ms)?;
         Ok(())
-    }
-
-    fn top_level_type_check<Pk: MiniscriptKey>(_: &Miniscript<Pk, Self>) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn other_top_level_checks<Pk: MiniscriptKey>(_ms: &Miniscript<Pk, Self>) -> Result<(), Error> {
-        Ok(())
-    }
-
-    fn top_level_checks<Pk: MiniscriptKey>(ms: &Miniscript<Pk, Self>) -> Result<(), Error> {
-        Self::top_level_type_check(ms)?;
-        Self::other_top_level_checks(ms)
     }
 
     fn sig_type() -> SigType { SigType::Ecdsa }

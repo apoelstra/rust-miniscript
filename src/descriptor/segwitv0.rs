@@ -39,9 +39,8 @@ impl<Pk: MiniscriptKey> Wsh<Pk> {
     pub fn as_inner(&self) -> &WshInner<Pk> { &self.inner }
 
     /// Create a new wsh descriptor
-    pub fn new(ms: Miniscript<Pk, Segwitv0>) -> Result<Self, Error> {
-        // do the top-level checks
-        Segwitv0::top_level_checks(&ms)?;
+    pub fn new(ms: Miniscript<Pk, Segwitv0>) -> Result<Self, ValidationError> {
+        ms.validate(&Segwitv0::SANE)?;
         Ok(Self { inner: WshInner::Ms(ms) })
     }
 
@@ -251,7 +250,7 @@ impl<Pk: FromStrKey> crate::expression::FromTree for Wsh<Pk> {
             return Ok(Wsh { inner: WshInner::SortedMulti(SortedMultiVec::from_tree(top)?) });
         }
         let sub = Miniscript::from_tree(top)?;
-        Segwitv0::top_level_checks(&sub)?;
+        sub.validate(&Segwitv0::SANE).map_err(Error::Validation)?;
         Ok(Wsh { inner: WshInner::Ms(sub) })
     }
 }

@@ -901,7 +901,11 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
             translated.push(Arc::new(new_ms));
         }
 
-        Ok(Arc::try_unwrap(translated.pop().unwrap()).unwrap())
+        let ret = translated.pop().unwrap();
+        ret.validate(&CtxQ::SANE)
+            .map_err(Error::Validation)
+            .map_err(TranslateErr::OuterError)?;
+        Ok(Arc::try_unwrap(ret).unwrap())
     }
 
     /// Substitutes raw public keys hashes with the public keys as provided by map.
