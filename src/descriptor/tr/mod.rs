@@ -339,7 +339,7 @@ impl<Pk: FromStrKey> core::str::FromStr for Tr<Pk> {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let expr_tree = expression::Tree::from_str(s)?;
+        let expr_tree = expression::Tree::from_str(s).map_err(Error::Parse)?;
         Self::from_tree(expr_tree.root())
     }
 }

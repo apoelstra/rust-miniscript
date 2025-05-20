@@ -1035,7 +1035,7 @@ impl<Pk: FromStrKey> crate::expression::FromTree for Descriptor<Pk> {
 impl<Pk: FromStrKey> FromStr for Descriptor<Pk> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Descriptor<Pk>, Error> {
-        let top = expression::Tree::from_str(s)?;
+        let top = expression::Tree::from_str(s).map_err(Error::Parse)?;
         let ret = Self::from_tree(top.root())?;
         if let Descriptor::Tr(ref inner) = ret {
             for item in inner.leaves() {

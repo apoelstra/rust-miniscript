@@ -105,7 +105,7 @@ impl<Pk: FromStrKey> crate::expression::FromTree for Sh<Pk> {
 impl<Pk: FromStrKey> core::str::FromStr for Sh<Pk> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let top = expression::Tree::from_str(s)?;
+        let top = expression::Tree::from_str(s).map_err(Error::Parse)?;
         Self::from_tree(top.root())
     }
 }

@@ -981,7 +981,7 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
         params: &ValidationParams,
     ) -> Result<Self, Error> {
         // This checks for invalid ASCII chars
-        let top = expression::Tree::from_str(s)?;
+        let top = expression::Tree::from_str(s).map_err(Error::Parse)?;
         let ms: Miniscript<Pk, Ctx> = expression::FromTree::from_tree(top.root())?;
         ms.validate(params).map_err(Error::Validation)?;
         Ok(ms)

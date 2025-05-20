@@ -790,7 +790,7 @@ impl<Pk: MiniscriptKey> fmt::Display for Policy<Pk> {
 impl<Pk: FromStrKey> str::FromStr for Policy<Pk> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Policy<Pk>, Error> {
-        let tree = expression::Tree::from_str(s)?;
+        let tree = expression::Tree::from_str(s).map_err(Error::Parse)?;
         let policy: Policy<Pk> = FromTree::from_tree(tree.root())?;
         policy
             .validate(&ValidationParams::SANE)
