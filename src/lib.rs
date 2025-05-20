@@ -430,6 +430,8 @@ pub trait ForEachKey<Pk: MiniscriptKey> {
 
 #[derive(Debug)]
 pub enum Error {
+    /// Error constructing a Miniscript.
+    MiniscriptConstruction(crate::miniscript::ConstructError),
     /// Error when lexing a bitcoin Script.
     ScriptLexer(crate::miniscript::lex::Error),
     /// rust-bitcoin address error
@@ -457,8 +459,6 @@ pub enum Error {
     CompilerError(crate::policy::compiler::CompilerError),
     /// Tried to construct a Taproot tree which was too deep.
     TapTreeDepthError(crate::descriptor::TapTreeDepthError),
-    /// Recursion depth exceeded when parsing policy/miniscript from string
-    MaxRecursiveDepthExceeded,
     /// Miniscript is equivalent to false. No possible satisfaction
     ImpossibleSatisfaction,
     /// Bare descriptors don't have any addresses
@@ -492,6 +492,7 @@ const MAX_RECURSION_DEPTH: u32 = 402;
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            Error::MiniscriptConstruction(ref e) => e.fmt(f),
             Error::ScriptLexer(ref e) => e.fmt(f),
             Error::AddrError(ref e) => fmt::Display::fmt(e, f),
             Error::AddrP2shError(ref e) => fmt::Display::fmt(e, f),
@@ -506,9 +507,6 @@ impl fmt::Display for Error {
             Error::TapTreeDepthError(ref e) => fmt::Display::fmt(e, f),
             #[cfg(feature = "compiler")]
             Error::CompilerError(ref e) => fmt::Display::fmt(e, f),
-            Error::MaxRecursiveDepthExceeded => {
-                write!(f, "Recursive depth over {} not permitted", MAX_RECURSION_DEPTH)
-            }
             Error::ImpossibleSatisfaction => write!(f, "Impossible to satisfy Miniscript"),
             Error::BareDescriptorAddr => write!(f, "Bare descriptors don't have address"),
             Error::PubKeyCtxError(ref pk, ref ctx) => {
@@ -538,10 +536,10 @@ impl std::error::Error for Error {
             | MissingSig(_)
             | CouldNotSatisfy
             | TypeCheck(_)
-            | MaxRecursiveDepthExceeded
             | ImpossibleSatisfaction
             | BareDescriptorAddr
             | TrNoScriptCode => None,
+            MiniscriptConstruction(e) => Some(e),
             ScriptLexer(e) => Some(e),
             AddrError(e) => Some(e),
             AddrP2shError(e) => Some(e),
@@ -558,6 +556,11 @@ impl std::error::Error for Error {
             Validation(e) => Some(e),
         }
     }
+}
+
+#[doc(hidden)]
+impl From<miniscript::ConstructError> for Error {
+    fn from(e: miniscript::ConstructError) -> Error { Error::MiniscriptConstruction(e) }
 }
 
 #[doc(hidden)]
