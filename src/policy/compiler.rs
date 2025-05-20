@@ -678,14 +678,10 @@ fn insert_elem<Pk: MiniscriptKey, Ctx: ScriptContext>(
     sat_prob: f64,
     dissat_prob: Option<f64>,
 ) -> bool {
-    // We check before compiling that non-malleable satisfactions exist, and it appears that
-    // there are no cases when malleable satisfactions beat non-malleable ones (and if there
-    // are, we don't want to use them). Anyway, detect these and early return.
-    if !elem.ms.ty.mall.non_malleable {
-        return false;
-    }
-
-    if Ctx::check_local_validity(&elem.ms).is_err() {
+    // FIXME turn off some checks in Ctx::SANE. In particular the duplicate pubkey
+    //  check is pretty expensive and serves no purpose since we checked the policy
+    //  before compiling.
+    if elem.ms.validate_non_top_level(&Ctx::SANE).is_err() {
         return false;
     }
 

@@ -133,7 +133,6 @@ pub use crate::descriptor::{DefiniteDescriptorKey, Descriptor, DescriptorPublicK
 pub use crate::error::ParseError;
 pub use crate::expression::{ParseNumError, ParseThresholdError, ParseTreeError};
 pub use crate::interpreter::Interpreter;
-pub use crate::miniscript::analyzable::{AnalysisError, ExtParams};
 pub use crate::miniscript::context::{BareCtx, Legacy, ScriptContext, Segwitv0, SigType, Tap};
 pub use crate::miniscript::decode::Terminal;
 pub use crate::miniscript::satisfy::{Preimage32, Satisfier};
@@ -456,14 +455,10 @@ pub enum Error {
     #[cfg(feature = "compiler")]
     /// Compiler related errors
     CompilerError(crate::policy::compiler::CompilerError),
-    /// Forward script context related errors
-    ContextError(miniscript::context::ScriptContextError),
     /// Tried to construct a Taproot tree which was too deep.
     TapTreeDepthError(crate::descriptor::TapTreeDepthError),
     /// Recursion depth exceeded when parsing policy/miniscript from string
     MaxRecursiveDepthExceeded,
-    /// Analysis Error
-    AnalysisError(miniscript::analyzable::AnalysisError),
     /// Miniscript is equivalent to false. No possible satisfaction
     ImpossibleSatisfaction,
     /// Bare descriptors don't have any addresses
@@ -508,14 +503,12 @@ impl fmt::Display for Error {
             Error::CouldNotSatisfy => f.write_str("could not satisfy"),
             Error::TypeCheck(ref e) => write!(f, "typecheck: {}", e),
             Error::Secp(ref e) => fmt::Display::fmt(e, f),
-            Error::ContextError(ref e) => fmt::Display::fmt(e, f),
             Error::TapTreeDepthError(ref e) => fmt::Display::fmt(e, f),
             #[cfg(feature = "compiler")]
             Error::CompilerError(ref e) => fmt::Display::fmt(e, f),
             Error::MaxRecursiveDepthExceeded => {
                 write!(f, "Recursive depth over {} not permitted", MAX_RECURSION_DEPTH)
             }
-            Error::AnalysisError(ref e) => e.fmt(f),
             Error::ImpossibleSatisfaction => write!(f, "Impossible to satisfy Miniscript"),
             Error::BareDescriptorAddr => write!(f, "Bare descriptors don't have address"),
             Error::PubKeyCtxError(ref pk, ref ctx) => {
@@ -555,9 +548,7 @@ impl std::error::Error for Error {
             Secp(e) => Some(e),
             #[cfg(feature = "compiler")]
             CompilerError(e) => Some(e),
-            ContextError(e) => Some(e),
             TapTreeDepthError(e) => Some(e),
-            AnalysisError(e) => Some(e),
             PubKeyCtxError(e, _) => Some(e),
             AbsoluteLockTime(e) => Some(e),
             RelativeLockTime(e) => Some(e),
@@ -582,16 +573,6 @@ impl From<miniscript::types::Error> for Error {
 #[doc(hidden)]
 impl From<crate::descriptor::TapTreeDepthError> for Error {
     fn from(e: crate::descriptor::TapTreeDepthError) -> Error { Error::TapTreeDepthError(e) }
-}
-
-#[doc(hidden)]
-impl From<miniscript::context::ScriptContextError> for Error {
-    fn from(e: miniscript::context::ScriptContextError) -> Error { Error::ContextError(e) }
-}
-
-#[doc(hidden)]
-impl From<miniscript::analyzable::AnalysisError> for Error {
-    fn from(e: miniscript::analyzable::AnalysisError) -> Error { Error::AnalysisError(e) }
 }
 
 #[doc(hidden)]
