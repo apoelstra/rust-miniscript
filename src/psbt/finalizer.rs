@@ -178,7 +178,7 @@ fn get_descriptor(psbt: &Psbt, index: usize) -> Result<Descriptor<PublicKey>, In
             *script_pubkey == addr.script_pubkey()
         });
         match partial_sig_contains_pk {
-            Some((pk, _sig)) => Descriptor::new_pkh(*pk).map_err(InputError::from),
+            Some((pk, _sig)) => Descriptor::new_pkh(*pk).map_err(InputError::Validation),
             None => Err(InputError::MissingPubkey),
         }
     } else if script_pubkey.is_p2wpkh() {
@@ -195,7 +195,7 @@ fn get_descriptor(psbt: &Psbt, index: usize) -> Result<Descriptor<PublicKey>, In
             }
         });
         match partial_sig_contains_pk {
-            Some((pk, _sig)) => Ok(Descriptor::new_wpkh(*pk)?),
+            Some((pk, _sig)) => Descriptor::new_wpkh(*pk).map_err(InputError::Validation),
             None => Err(InputError::MissingPubkey),
         }
     } else if script_pubkey.is_p2wsh() {
@@ -256,7 +256,9 @@ fn get_descriptor(psbt: &Psbt, index: usize) -> Result<Descriptor<PublicKey>, In
                         }
                     });
                     match partial_sig_contains_pk {
-                        Some((pk, _sig)) => Ok(Descriptor::new_sh_wpkh(*pk)?),
+                        Some((pk, _sig)) => {
+                            Descriptor::new_sh_wpkh(*pk).map_err(InputError::Validation)
+                        }
                         None => Err(InputError::MissingPubkey),
                     }
                 } else {

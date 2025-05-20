@@ -29,7 +29,7 @@ use crate::plan::{AssetProvider, Plan};
 use crate::prelude::*;
 use crate::{
     expression, hash256, BareCtx, Error, ForEachKey, FromStrKey, MiniscriptKey, ParseError,
-    Satisfier, Threshold, ToPublicKey, TranslateErr, Translator,
+    Satisfier, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
 };
 
 mod bare;
@@ -165,15 +165,19 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
     }
 
     /// Create a new PkH descriptor
-    pub fn new_pkh(pk: Pk) -> Result<Self, Error> { Ok(Descriptor::Pkh(Pkh::new(pk)?)) }
+    pub fn new_pkh(pk: Pk) -> Result<Self, ValidationError> { Ok(Descriptor::Pkh(Pkh::new(pk)?)) }
 
     /// Create a new Wpkh descriptor
     /// Will return Err if uncompressed key is used
-    pub fn new_wpkh(pk: Pk) -> Result<Self, Error> { Ok(Descriptor::Wpkh(Wpkh::new(pk)?)) }
+    pub fn new_wpkh(pk: Pk) -> Result<Self, ValidationError> {
+        Ok(Descriptor::Wpkh(Wpkh::new(pk)?))
+    }
 
     /// Create a new sh wrapped wpkh from `Pk`.
     /// Errors when uncompressed keys are supplied
-    pub fn new_sh_wpkh(pk: Pk) -> Result<Self, Error> { Ok(Descriptor::Sh(Sh::new_wpkh(pk)?)) }
+    pub fn new_sh_wpkh(pk: Pk) -> Result<Self, ValidationError> {
+        Ok(Descriptor::Sh(Sh::new_wpkh(pk)?))
+    }
 
     // Miniscripts
 
@@ -220,7 +224,7 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
     /// Errors when miniscript exceeds resource limits under p2sh context
     pub fn new_sh_sortedmulti(
         thresh: Threshold<Pk, MAX_PUBKEYS_PER_MULTISIG>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, ValidationError> {
         Ok(Descriptor::Sh(Sh::new_sortedmulti(thresh)?))
     }
 
@@ -229,7 +233,7 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
     /// Errors when miniscript exceeds resource limits under segwit context
     pub fn new_sh_wsh_sortedmulti(
         thresh: Threshold<Pk, MAX_PUBKEYS_PER_MULTISIG>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, ValidationError> {
         Ok(Descriptor::Sh(Sh::new_wsh_sortedmulti(thresh)?))
     }
 
@@ -237,7 +241,7 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
     /// Errors when miniscript exceeds resource limits under p2sh context
     pub fn new_wsh_sortedmulti(
         thresh: Threshold<Pk, MAX_PUBKEYS_PER_MULTISIG>,
-    ) -> Result<Self, Error> {
+    ) -> Result<Self, ValidationError> {
         Ok(Descriptor::Wsh(Wsh::new_sortedmulti(thresh)?))
     }
 
