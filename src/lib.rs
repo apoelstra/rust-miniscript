@@ -457,8 +457,6 @@ pub enum Error {
     TrNoScriptCode,
     /// Invalid threshold.
     Threshold(ThresholdError),
-    /// Invalid threshold.
-    ParseThreshold(ParseThresholdError),
     /// Invalid expression tree.
     Parse(ParseError),
     /// Validation of a script failed.
@@ -467,7 +465,7 @@ pub enum Error {
 
 #[doc(hidden)] // will be removed when we remove Error
 impl From<ParseThresholdError> for Error {
-    fn from(e: ParseThresholdError) -> Self { Self::ParseThreshold(e) }
+    fn from(e: ParseThresholdError) -> Self { Self::Parse(ParseError::Threshold(e)) }
 }
 
 // https://github.com/sipa/miniscript/pull/5 for discussion on this number
@@ -488,7 +486,6 @@ impl fmt::Display for Error {
             Error::BareDescriptorAddr => write!(f, "Bare descriptors don't have address"),
             Error::TrNoScriptCode => write!(f, "No script code for Tr descriptors"),
             Error::Threshold(ref e) => e.fmt(f),
-            Error::ParseThreshold(ref e) => e.fmt(f),
             Error::Parse(ref e) => e.fmt(f),
             Error::Validation(ref e) => e.fmt(f),
         }
@@ -513,7 +510,6 @@ impl std::error::Error for Error {
             Secp(e) => Some(e),
             TapTreeDepthError(e) => Some(e),
             Threshold(e) => Some(e),
-            ParseThreshold(e) => Some(e),
             Parse(e) => Some(e),
             Validation(e) => Some(e),
         }

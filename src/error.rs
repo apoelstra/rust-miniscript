@@ -27,6 +27,8 @@ pub enum ParseError {
     FromStr(Box<dyn StaticDebugAndDisplay>),
     /// Failed to parse a number.
     Num(crate::ParseNumError),
+    /// Failed to parse a threshold.
+    Threshold(crate::ParseThresholdError),
     /// Error parsing a string into an expression tree.
     Tree(crate::ParseTreeError),
 }
@@ -42,6 +44,10 @@ impl From<crate::ParseNumError> for ParseError {
     fn from(e: crate::ParseNumError) -> Self { Self::Num(e) }
 }
 
+impl From<crate::ParseThresholdError> for ParseError {
+    fn from(e: crate::ParseThresholdError) -> Self { Self::Threshold(e) }
+}
+
 impl From<crate::ParseTreeError> for ParseError {
     fn from(e: crate::ParseTreeError) -> Self { Self::Tree(e) }
 }
@@ -53,6 +59,7 @@ impl fmt::Display for ParseError {
             ParseError::RelativeLockTime(ref e) => e.fmt(f),
             ParseError::FromStr(ref e) => e.fmt(f),
             ParseError::Num(ref e) => e.fmt(f),
+            ParseError::Threshold(ref e) => e.fmt(f),
             ParseError::Tree(ref e) => e.fmt(f),
         }
     }
@@ -66,6 +73,7 @@ impl error::Error for ParseError {
             ParseError::RelativeLockTime(ref e) => Some(e),
             ParseError::FromStr(..) => None,
             ParseError::Num(ref e) => Some(e),
+            ParseError::Threshold(ref e) => Some(e),
             ParseError::Tree(ref e) => Some(e),
         }
     }

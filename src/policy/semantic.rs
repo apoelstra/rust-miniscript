@@ -363,10 +363,10 @@ impl<Pk: FromStrKey> Policy<Pk> {
 
                     // thresh(1) and thresh(n) are disallowed in semantic policies
                     if thresh.is_or() {
-                        return Err(Error::ParseThreshold(crate::ParseThresholdError::IllegalOr));
+                        return Err(Error::from(crate::ParseThresholdError::IllegalOr));
                     }
                     if thresh.is_and() {
-                        return Err(Error::ParseThreshold(crate::ParseThresholdError::IllegalAnd));
+                        return Err(Error::from(crate::ParseThresholdError::IllegalAnd));
                     }
 
                     Ok(Policy::Thresh(thresh))
