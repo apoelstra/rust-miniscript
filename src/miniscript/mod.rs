@@ -1174,7 +1174,13 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> FromTree for Miniscript<Pk, Ctx> {
                         b't' => Terminal::AndV(new, Arc::new(Miniscript::TRUE)),
                         b'u' => Terminal::OrI(new, Arc::new(Miniscript::FALSE)),
                         b'l' => Terminal::OrI(Arc::new(Miniscript::FALSE), new),
-                        x => return Err(Error::UnknownWrapper(x.into())),
+                        x => {
+                            return Err(Error::Parse(crate::ParseError::Tree(
+                                crate::ParseTreeError::UnknownName {
+                                    name: format!("{} (wrapper)", x),
+                                },
+                            )))
+                        }
                     };
                     new = Arc::new(Miniscript::from_ast(term)?);
                 }
