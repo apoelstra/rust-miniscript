@@ -446,9 +446,6 @@ pub enum Error {
     TypeCheck(String),
     /// Forward-secp related errors
     Secp(bitcoin::secp256k1::Error),
-    #[cfg(feature = "compiler")]
-    /// Compiler related errors
-    CompilerError(crate::policy::compiler::CompilerError),
     /// Tried to construct a Taproot tree which was too deep.
     TapTreeDepthError(crate::descriptor::TapTreeDepthError),
     /// Miniscript is equivalent to false. No possible satisfaction
@@ -487,8 +484,6 @@ impl fmt::Display for Error {
             Error::TypeCheck(ref e) => write!(f, "typecheck: {}", e),
             Error::Secp(ref e) => fmt::Display::fmt(e, f),
             Error::TapTreeDepthError(ref e) => fmt::Display::fmt(e, f),
-            #[cfg(feature = "compiler")]
-            Error::CompilerError(ref e) => fmt::Display::fmt(e, f),
             Error::ImpossibleSatisfaction => write!(f, "Impossible to satisfy Miniscript"),
             Error::BareDescriptorAddr => write!(f, "Bare descriptors don't have address"),
             Error::TrNoScriptCode => write!(f, "No script code for Tr descriptors"),
@@ -517,8 +512,6 @@ impl std::error::Error for Error {
             AddrError(e) => Some(e),
             AddrP2shError(e) => Some(e),
             Secp(e) => Some(e),
-            #[cfg(feature = "compiler")]
-            CompilerError(e) => Some(e),
             TapTreeDepthError(e) => Some(e),
             Threshold(e) => Some(e),
             ParseThreshold(e) => Some(e),
@@ -556,12 +549,6 @@ impl From<bitcoin::address::ParseError> for Error {
 #[doc(hidden)]
 impl From<bitcoin::address::P2shError> for Error {
     fn from(e: bitcoin::address::P2shError) -> Error { Error::AddrP2shError(e) }
-}
-
-#[doc(hidden)]
-#[cfg(feature = "compiler")]
-impl From<crate::policy::compiler::CompilerError> for Error {
-    fn from(e: crate::policy::compiler::CompilerError) -> Error { Error::CompilerError(e) }
 }
 
 /// The size of an encoding of a number in Script

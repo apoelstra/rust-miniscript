@@ -263,13 +263,13 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     pub fn compile_tr_private_experimental(
         &self,
         unspendable_key: Option<Pk>,
-    ) -> Result<Descriptor<Pk>, Error> {
+    ) -> Result<Descriptor<Pk>, CompilerError> {
         self.validate(&ValidationParams::SANE)
             .map_err(CompilerError::Validation)?;
         self.check_binary_ops()?;
         match self.is_safe_nonmalleable() {
-            (false, _) => Err(Error::from(CompilerError::TopLevelNonSafe)),
-            (_, false) => Err(Error::from(CompilerError::ImpossibleNonMalleableCompilation)),
+            (false, _) => Err(CompilerError::TopLevelNonSafe),
+            (_, false) => Err(CompilerError::ImpossibleNonMalleableCompilation),
             _ => {
                 let (internal_key, policy) = self.clone().extract_key(unspendable_key)?;
                 let tree = Descriptor::new_tr(
@@ -299,7 +299,7 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
                         }
                     },
                 )
-                .map_err(Error::Validation)?;
+                .map_err(CompilerError::Validation)?;
                 Ok(tree)
             }
         }
@@ -319,26 +319,23 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     pub fn compile_to_descriptor<Ctx: ScriptContext>(
         &self,
         desc_ctx: DescriptorCtx<Pk>,
-    ) -> Result<Descriptor<Pk>, Error> {
+    ) -> Result<Descriptor<Pk>, CompilerError> {
         self.validate(&ValidationParams::SANE)
             .map_err(CompilerError::Validation)?;
         self.check_binary_ops()?;
         match self.is_safe_nonmalleable() {
-            (false, _) => Err(Error::from(CompilerError::TopLevelNonSafe)),
-            (_, false) => Err(Error::from(CompilerError::ImpossibleNonMalleableCompilation)),
+            (false, _) => Err(CompilerError::TopLevelNonSafe),
+            (_, false) => Err(CompilerError::ImpossibleNonMalleableCompilation),
             _ => match desc_ctx {
                 DescriptorCtx::Bare => Descriptor::new_bare(compiler::best_compilation(self)?)
-                    .map_err(Error::Validation),
-                DescriptorCtx::Sh => {
-                    Descriptor::new_sh(compiler::best_compilation(self)?).map_err(Error::Validation)
-                }
+                    .map_err(CompilerError::Validation),
+                DescriptorCtx::Sh => Descriptor::new_sh(compiler::best_compilation(self)?)
+                    .map_err(CompilerError::Validation),
                 DescriptorCtx::Wsh => Descriptor::new_wsh(compiler::best_compilation(self)?)
-                    .map_err(Error::Validation),
+                    .map_err(CompilerError::Validation),
                 DescriptorCtx::ShWsh => Descriptor::new_sh_wsh(compiler::best_compilation(self)?)
-                    .map_err(Error::Validation),
-                DescriptorCtx::Tr(unspendable_key) => self
-                    .compile_tr(unspendable_key)
-                    .map_err(Error::CompilerError),
+                    .map_err(CompilerError::Validation),
+                DescriptorCtx::Tr(unspendable_key) => self.compile_tr(unspendable_key),
             },
         }
     }
