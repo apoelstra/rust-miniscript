@@ -714,7 +714,7 @@ impl Descriptor<DescriptorPublicKey> {
                 Ok(sk) => {
                     let pk = key_map
                         .insert(secp, sk)
-                        .map_err(|e| Error::Unexpected(e.to_string()))?;
+                        .map_err(|e| Error::Parse(ParseError::box_from_str(e)))?;
                     Ok(pk)
                 }
                 Err(_) => {

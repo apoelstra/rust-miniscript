@@ -436,8 +436,6 @@ pub enum Error {
     AddrError(bitcoin::address::ParseError),
     /// rust-bitcoin p2sh address error
     AddrP2shError(bitcoin::address::P2shError),
-    /// Got something we were not expecting
-    Unexpected(String),
     /// Encountered a wrapping character that we don't recognize
     UnknownWrapper(char),
     /// Could not satisfy a script (fragment) because of a missing signature
@@ -483,7 +481,6 @@ impl fmt::Display for Error {
             Error::MiniscriptConstruction(ref e) => e.fmt(f),
             Error::AddrError(ref e) => fmt::Display::fmt(e, f),
             Error::AddrP2shError(ref e) => fmt::Display::fmt(e, f),
-            Error::Unexpected(ref s) => write!(f, "unexpected «{}»", s),
             Error::UnknownWrapper(ch) => write!(f, "unknown wrapper «{}:»", ch),
             Error::MissingSig(ref pk) => write!(f, "missing signature for key {:?}", pk),
             Error::CouldNotSatisfy => f.write_str("could not satisfy"),
@@ -509,8 +506,7 @@ impl std::error::Error for Error {
         use self::Error::*;
 
         match self {
-            Unexpected(_)
-            | UnknownWrapper(_)
+            UnknownWrapper(_)
             | MissingSig(_)
             | CouldNotSatisfy
             | TypeCheck(_)
