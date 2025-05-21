@@ -850,6 +850,12 @@ impl Descriptor<DescriptorPublicKey> {
     ///
     /// For multipath descriptors it will return as many descriptors as there is
     /// "parallel" paths. For regular descriptors it will just return itself.
+    ///
+    /// # Panics
+    ///
+    /// May panic if given a descriptor which has multiple multi-path keys with different
+    /// numbers of paths. Such descriptors are rejected by the ordinary constructors,
+    /// which enforce "sanity" rules, so most users do not need to worry about this.
     #[allow(clippy::blocks_in_conditions)]
     pub fn into_single_descriptors(self) -> Result<Vec<Descriptor<DescriptorPublicKey>>, Error> {
         // All single-path descriptors contained in this descriptor.
@@ -881,19 +887,16 @@ impl Descriptor<DescriptorPublicKey> {
         struct IndexChoser(usize);
         impl Translator<DescriptorPublicKey> for IndexChoser {
             type TargetPk = DescriptorPublicKey;
-            type Error = Error;
+            type Error = core::convert::Infallible;
 
-            fn pk(&mut self, pk: &DescriptorPublicKey) -> Result<DescriptorPublicKey, Error> {
+            fn pk(&mut self, pk: &DescriptorPublicKey) -> Result<Self::TargetPk, Self::Error> {
                 match pk {
                     DescriptorPublicKey::Single(..) | DescriptorPublicKey::XPub(..) => {
                         Ok(pk.clone())
                     }
-                    DescriptorPublicKey::MultiXPub(_) => pk
-                        .clone()
-                        .into_single_keys()
-                        .get(self.0)
-                        .cloned()
-                        .ok_or(Error::MultipathDescLenMismatch),
+                    DescriptorPublicKey::MultiXPub(_) => {
+                        Ok(pk.clone().into_single_keys()[self.0].clone())
+                    }
                 }
             }
             translate_hash_clone!(DescriptorPublicKey);
@@ -901,9 +904,7 @@ impl Descriptor<DescriptorPublicKey> {
 
         for (i, desc) in descriptors.iter_mut().enumerate() {
             let mut index_choser = IndexChoser(i);
-            *desc = desc
-                .translate_pk(&mut index_choser)
-                .map_err(|e| e.expect_translator_err("No Context errors possible"))?;
+            *desc = desc.translate_pk(&mut index_choser).unwrap(); // infallible
         }
 
         Ok(descriptors)

@@ -472,9 +472,6 @@ pub enum Error {
     PubKeyCtxError(miniscript::decode::KeyError, &'static str),
     /// No script code for Tr descriptors
     TrNoScriptCode,
-    /// At least two BIP389 key expressions in the descriptor contain tuples of
-    /// derivation indexes of different lengths.
-    MultipathDescLenMismatch,
     /// Invalid absolute locktime
     AbsoluteLockTime(AbsLockTimeError),
     /// Invalid absolute locktime
@@ -515,11 +512,9 @@ impl fmt::Display for Error {
             Error::TapTreeDepthError(ref e) => fmt::Display::fmt(e, f),
             #[cfg(feature = "compiler")]
             Error::CompilerError(ref e) => fmt::Display::fmt(e, f),
-            Error::MaxRecursiveDepthExceeded => write!(
-                f,
-                "Recursive depth over {} not permitted",
-                MAX_RECURSION_DEPTH
-            ),
+            Error::MaxRecursiveDepthExceeded => {
+                write!(f, "Recursive depth over {} not permitted", MAX_RECURSION_DEPTH)
+            }
             Error::AnalysisError(ref e) => e.fmt(f),
             Error::ImpossibleSatisfaction => write!(f, "Impossible to satisfy Miniscript"),
             Error::BareDescriptorAddr => write!(f, "Bare descriptors don't have address"),
@@ -527,7 +522,6 @@ impl fmt::Display for Error {
                 write!(f, "Pubkey error: {} under {} scriptcontext", pk, ctx)
             }
             Error::TrNoScriptCode => write!(f, "No script code for Tr descriptors"),
-            Error::MultipathDescLenMismatch => write!(f, "At least two BIP389 key expressions in the descriptor contain tuples of derivation indexes of different lengths"),
             Error::AbsoluteLockTime(ref e) => e.fmt(f),
             Error::RelativeLockTime(ref e) => e.fmt(f),
             Error::Threshold(ref e) => e.fmt(f),
@@ -554,8 +548,7 @@ impl std::error::Error for Error {
             | MaxRecursiveDepthExceeded
             | ImpossibleSatisfaction
             | BareDescriptorAddr
-            | TrNoScriptCode
-            | MultipathDescLenMismatch => None,
+            | TrNoScriptCode => None,
             ScriptLexer(e) => Some(e),
             AddrError(e) => Some(e),
             AddrP2shError(e) => Some(e),
