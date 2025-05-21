@@ -897,14 +897,13 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
                 }
             };
             let new_ms = Miniscript::from_ast(new_term)
-                .map_err(Error::MiniscriptConstruction)
+                .map_err(ConstructError::unwrap_validation_err)
                 .map_err(TranslateErr::OuterError)?;
             translated.push(Arc::new(new_ms));
         }
 
         let ret = translated.pop().unwrap();
         ret.validate(&CtxQ::SANE)
-            .map_err(Error::Validation)
             .map_err(TranslateErr::OuterError)?;
         Ok(Arc::try_unwrap(ret).unwrap())
     }

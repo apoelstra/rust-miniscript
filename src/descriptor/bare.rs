@@ -90,9 +90,7 @@ impl<Pk: MiniscriptKey> Bare<Pk> {
     where
         T: Translator<Pk>,
     {
-        Bare::new(self.ms.translate_pk(t)?)
-            .map_err(Error::Validation)
-            .map_err(TranslateErr::OuterError)
+        Bare::new(self.ms.translate_pk(t)?).map_err(TranslateErr::OuterError)
     }
 }
 
@@ -253,7 +251,7 @@ impl<Pk: MiniscriptKey> Pkh<Pk> {
         let res = Pkh::new(t.pk(&self.pk)?);
         match res {
             Ok(pk) => Ok(pk),
-            Err(e) => Err(TranslateErr::OuterError(Error::Validation(e))),
+            Err(e) => Err(TranslateErr::OuterError(e)),
         }
     }
 }

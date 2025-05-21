@@ -349,7 +349,7 @@ impl<Pk: MiniscriptKey> Wpkh<Pk> {
         let res = Wpkh::new(t.pk(&self.pk)?);
         match res {
             Ok(pk) => Ok(pk),
-            Err(e) => Err(TranslateErr::OuterError(Error::Validation(e))),
+            Err(e) => Err(TranslateErr::OuterError(e)),
         }
     }
 }

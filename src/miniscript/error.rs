@@ -22,6 +22,22 @@ pub enum ConstructError {
     Validation(crate::ValidationError),
 }
 
+impl ConstructError {
+    /// Assumes that a construction error is a validation error and returns it.
+    ///
+    /// # Panics
+    ///
+    /// Panics if the construction error is actually a typecheck error.
+    pub fn unwrap_validation_err(self) -> crate::ValidationError {
+        match self {
+            Self::TypeCheck(e) => {
+                panic!("attempted to unwrap a validation error, but had a typecheck error ({})", e)
+            }
+            Self::Validation(e) => e,
+        }
+    }
+}
+
 impl fmt::Display for ConstructError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {

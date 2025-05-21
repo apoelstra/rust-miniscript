@@ -767,7 +767,10 @@ impl Descriptor<DescriptorPublicKey> {
         let descriptor = Descriptor::<String>::from_str(s)?;
         let descriptor = descriptor
             .translate_pk(&mut keymap_pk)
-            .map_err(TranslateErr::flatten)?;
+            .map_err(|err| match err {
+                TranslateErr::TranslatorErr(e) => e,
+                TranslateErr::OuterError(e) => Error::Validation(e),
+            })?;
 
         Ok((descriptor, keymap_pk.0))
     }

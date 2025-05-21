@@ -327,10 +327,12 @@ pub trait Translator<P: MiniscriptKey> {
 pub enum TranslateErr<E> {
     /// Error inside in the underlying key translation
     TranslatorErr(E),
-    /// Error in the final translated structure. In some cases, the translated
-    /// structure might not be valid under the given context. For example, translating
-    /// from string keys to x-only keys in wsh descriptors.
-    OuterError(Error),
+    /// Error in the final translated structure.
+    ///
+    /// Even if the key mapping succeeds, the final structure may be invalid. For example,
+    /// if multiple keys are mapped to the same key, or if compressed keys are mapped
+    /// to x-only keys in a legacy descriptor.
+    OuterError(ValidationError),
 }
 
 impl<E> TranslateErr<E> {
@@ -365,7 +367,7 @@ impl TranslateErr<core::convert::Infallible> {
     /// When the translator error type is [`core::convert::Infallible`], which is
     /// impossible to construct, allows unwrapping the outer error without any
     /// panic paths.
-    pub fn into_outer_err(self) -> Error {
+    pub fn into_outer_err(self) -> ValidationError {
         match self {
             Self::TranslatorErr(impossible) => match impossible {},
             Self::OuterError(e) => e,
@@ -373,13 +375,14 @@ impl TranslateErr<core::convert::Infallible> {
     }
 }
 
-impl TranslateErr<Error> {
-    /// If we are doing a translation where our "outer error" is the generic
-    /// Miniscript error, eliminate the `TranslateErr` type which is just noise.
-    pub fn flatten(self) -> Error {
+impl<T: From<ValidationError>> TranslateErr<T> {
+    /// If we are doing a translation where our "outer error" can be constructed
+    /// from a Miniscript construction error, eliminate the `TranslateErr` type,
+    /// which is just noise.
+    pub fn flatten(self) -> T {
         match self {
             Self::TranslatorErr(e) => e,
-            Self::OuterError(e) => e,
+            Self::OuterError(e) => T::from(e),
         }
     }
 }

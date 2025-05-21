@@ -250,9 +250,8 @@ impl<Pk: MiniscriptKey> Tr<Pk> {
             Some(tree) => Some(tree.translate_pk(translate)?),
             None => None,
         };
-        let translate_desc = Tr::new(translate.pk(&self.internal_key)?, tree)
-            .map_err(Error::Validation)
-            .map_err(TranslateErr::OuterError)?;
+        let translate_desc =
+            Tr::new(translate.pk(&self.internal_key)?, tree).map_err(TranslateErr::OuterError)?;
         Ok(translate_desc)
     }
 }
