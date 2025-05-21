@@ -20,9 +20,7 @@ use crate::prelude::*;
 use crate::primitives::threshold;
 #[cfg(doc)]
 use crate::Descriptor;
-use crate::{
-    hash256, AbsLockTime, Error, Miniscript, MiniscriptKey, RelLockTime, Threshold, ToPublicKey,
-};
+use crate::{hash256, AbsLockTime, Miniscript, MiniscriptKey, RelLockTime, Threshold, ToPublicKey};
 
 /// Trait for parsing keys from byte slices
 pub trait ParseableKey: Sized + ToPublicKey + private::Sealed {
@@ -280,7 +278,7 @@ macro_rules! match_token {
             $(
                 Some($first) => match_token!($tokens $(,$rest)* => $sub,),
             )*
-            Some(other) => return Err(Error::Unexpected(other.to_string())),
+            Some(other) => return Err(Error::Unexpected(other)),
             None => return Err(Error::UnexpectedStart),
         }
     };
@@ -299,7 +297,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> TerminalStack<Pk, Ctx> {
 
     ///reduce, type check and push a 0-arg node
     fn reduce0(&mut self, ms: Terminal<Pk, Ctx>) -> Result<(), Error> {
-        let ms = Miniscript::from_ast(ms)?;
+        let ms = Miniscript::from_ast(ms).map_err(Error::Construct)?;
         self.0.push(ms);
         Ok(())
     }
@@ -603,7 +601,8 @@ pub fn decode<Ctx: ScriptContext>(
                 let c = term.pop().unwrap();
                 let wrapped_ms = Terminal::AndOr(Arc::new(a), Arc::new(c), Arc::new(b));
 
-                term.0.push(Miniscript::from_ast(wrapped_ms)?);
+                term.0
+                    .push(Miniscript::from_ast(wrapped_ms).map_err(Error::Construct)?);
             }
             Some(NonTerm::ThreshW { n, k }) => {
                 match_token!(
@@ -723,6 +722,70 @@ impl error::Error for KeyError {
         match self {
             Self::Full(e) => Some(e),
             Self::XOnly(e) => Some(e),
+        }
+    }
+}
+
+/// Decoding error.
+#[derive(Debug)]
+pub enum Error {
+    /// Error constructing a Miniscript.
+    Construct(super::ConstructError),
+    /// Error lexing a Script into Miniscript tokens.
+    Lex(super::lex::Error),
+    /// PubKey invalid under current context
+    PubKeyCtxError(KeyError, &'static str),
+    /// Invalid absolute locktime
+    AbsoluteLockTime(crate::AbsLockTimeError),
+    /// Invalid absolute locktime
+    RelativeLockTime(crate::RelLockTimeError),
+    /// Invalid threshold.
+    Threshold(crate::ThresholdError),
+    /// Parsed a miniscript but there were more script opcodes after it.
+    Trailing(Tk),
+    /// Got token that we did not expect.
+    Unexpected(Tk),
+    /// While parsing backward, hit beginning of script
+    UnexpectedStart,
+}
+
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match *self {
+            Self::Construct(ref e) => e.fmt(f),
+            Self::Lex(ref e) => e.fmt(f),
+            Self::PubKeyCtxError(ref pk, ref ctx) => {
+                write!(f, "failed to parse {} key: {}", ctx, pk)
+            }
+            Self::AbsoluteLockTime(ref e) => e.fmt(f),
+            Self::RelativeLockTime(ref e) => e.fmt(f),
+            Self::Threshold(ref e) => e.fmt(f),
+            Self::Trailing(ref tk) => {
+                write!(f, "unexpected extra token {} after decoding script end-to-front", tk)
+            }
+            Self::Unexpected(ref tk) => {
+                write!(f, "unexpected token {} when decoding script end-to-front", tk)
+            }
+            Self::UnexpectedStart => {
+                f.write_str("unexpected start-of-script when decoding back-to-front")
+            }
+        }
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for Error {
+    fn cause(&self) -> Option<&dyn std::error::Error> {
+        match *self {
+            Self::Construct(ref e) => Some(e),
+            Self::Lex(ref e) => Some(e),
+            Self::PubKeyCtxError(ref e, _) => Some(e),
+            Self::AbsoluteLockTime(ref e) => Some(e),
+            Self::RelativeLockTime(ref e) => Some(e),
+            Self::Threshold(ref e) => Some(e),
+            Self::Trailing(..) => None,
+            Self::Unexpected(..) => None,
+            Self::UnexpectedStart => None,
         }
     }
 }

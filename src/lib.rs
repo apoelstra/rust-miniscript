@@ -432,20 +432,14 @@ pub trait ForEachKey<Pk: MiniscriptKey> {
 pub enum Error {
     /// Error constructing a Miniscript.
     MiniscriptConstruction(crate::miniscript::ConstructError),
-    /// Error when lexing a bitcoin Script.
-    ScriptLexer(crate::miniscript::lex::Error),
     /// rust-bitcoin address error
     AddrError(bitcoin::address::ParseError),
     /// rust-bitcoin p2sh address error
     AddrP2shError(bitcoin::address::P2shError),
-    /// While parsing backward, hit beginning of script
-    UnexpectedStart,
     /// Got something we were not expecting
     Unexpected(String),
     /// Encountered a wrapping character that we don't recognize
     UnknownWrapper(char),
-    /// Parsed a miniscript but there were more script opcodes after it
-    Trailing(String),
     /// Could not satisfy a script (fragment) because of a missing signature
     MissingSig(bitcoin::PublicKey),
     /// General failure to satisfy
@@ -463,14 +457,8 @@ pub enum Error {
     ImpossibleSatisfaction,
     /// Bare descriptors don't have any addresses
     BareDescriptorAddr,
-    /// PubKey invalid under current context
-    PubKeyCtxError(miniscript::decode::KeyError, &'static str),
     /// No script code for Tr descriptors
     TrNoScriptCode,
-    /// Invalid absolute locktime
-    AbsoluteLockTime(AbsLockTimeError),
-    /// Invalid absolute locktime
-    RelativeLockTime(RelLockTimeError),
     /// Invalid threshold.
     Threshold(ThresholdError),
     /// Invalid threshold.
@@ -493,13 +481,10 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::MiniscriptConstruction(ref e) => e.fmt(f),
-            Error::ScriptLexer(ref e) => e.fmt(f),
             Error::AddrError(ref e) => fmt::Display::fmt(e, f),
             Error::AddrP2shError(ref e) => fmt::Display::fmt(e, f),
-            Error::UnexpectedStart => f.write_str("unexpected start of script"),
             Error::Unexpected(ref s) => write!(f, "unexpected «{}»", s),
             Error::UnknownWrapper(ch) => write!(f, "unknown wrapper «{}:»", ch),
-            Error::Trailing(ref s) => write!(f, "trailing tokens: {}", s),
             Error::MissingSig(ref pk) => write!(f, "missing signature for key {:?}", pk),
             Error::CouldNotSatisfy => f.write_str("could not satisfy"),
             Error::TypeCheck(ref e) => write!(f, "typecheck: {}", e),
@@ -509,12 +494,7 @@ impl fmt::Display for Error {
             Error::CompilerError(ref e) => fmt::Display::fmt(e, f),
             Error::ImpossibleSatisfaction => write!(f, "Impossible to satisfy Miniscript"),
             Error::BareDescriptorAddr => write!(f, "Bare descriptors don't have address"),
-            Error::PubKeyCtxError(ref pk, ref ctx) => {
-                write!(f, "Pubkey error: {} under {} scriptcontext", pk, ctx)
-            }
             Error::TrNoScriptCode => write!(f, "No script code for Tr descriptors"),
-            Error::AbsoluteLockTime(ref e) => e.fmt(f),
-            Error::RelativeLockTime(ref e) => e.fmt(f),
             Error::Threshold(ref e) => e.fmt(f),
             Error::ParseThreshold(ref e) => e.fmt(f),
             Error::Parse(ref e) => e.fmt(f),
@@ -529,10 +509,8 @@ impl std::error::Error for Error {
         use self::Error::*;
 
         match self {
-            UnexpectedStart
-            | Unexpected(_)
+            Unexpected(_)
             | UnknownWrapper(_)
-            | Trailing(_)
             | MissingSig(_)
             | CouldNotSatisfy
             | TypeCheck(_)
@@ -540,16 +518,12 @@ impl std::error::Error for Error {
             | BareDescriptorAddr
             | TrNoScriptCode => None,
             MiniscriptConstruction(e) => Some(e),
-            ScriptLexer(e) => Some(e),
             AddrError(e) => Some(e),
             AddrP2shError(e) => Some(e),
             Secp(e) => Some(e),
             #[cfg(feature = "compiler")]
             CompilerError(e) => Some(e),
             TapTreeDepthError(e) => Some(e),
-            PubKeyCtxError(e, _) => Some(e),
-            AbsoluteLockTime(e) => Some(e),
-            RelativeLockTime(e) => Some(e),
             Threshold(e) => Some(e),
             ParseThreshold(e) => Some(e),
             Parse(e) => Some(e),
@@ -561,11 +535,6 @@ impl std::error::Error for Error {
 #[doc(hidden)]
 impl From<miniscript::ConstructError> for Error {
     fn from(e: miniscript::ConstructError) -> Error { Error::MiniscriptConstruction(e) }
-}
-
-#[doc(hidden)]
-impl From<miniscript::lex::Error> for Error {
-    fn from(e: miniscript::lex::Error) -> Error { Error::ScriptLexer(e) }
 }
 
 #[doc(hidden)]

@@ -40,11 +40,9 @@ fn pk_from_stack_elem(
 // correct usage of x-only keys or multi_a
 fn script_from_stack_elem<Ctx: ScriptContext>(
     elem: &stack::Element<'_>,
-) -> Result<Miniscript<Ctx::Key, Ctx>, Error> {
+) -> Result<Miniscript<Ctx::Key, Ctx>, crate::miniscript::decode::Error> {
     match *elem {
-        stack::Element::Push(sl) => {
-            Miniscript::decode_consensus(bitcoin::Script::from_bytes(sl)).map_err(Error::from)
-        }
+        stack::Element::Push(sl) => Miniscript::decode_consensus(bitcoin::Script::from_bytes(sl)),
         stack::Element::Satisfied => Ok(Miniscript::TRUE),
         stack::Element::Dissatisfied => Ok(Miniscript::FALSE),
     }
@@ -172,7 +170,8 @@ pub(super) fn from_txdata<'txin>(
         } else {
             match wit_stack.pop() {
                 Some(elem) => {
-                    let miniscript = script_from_stack_elem::<Segwitv0>(&elem)?;
+                    let miniscript =
+                        script_from_stack_elem::<Segwitv0>(&elem).map_err(Error::Decode)?;
                     let script = miniscript.encode();
                     let miniscript = miniscript.to_no_checks_ms();
                     let scripthash = sha256::Hash::hash(script.as_bytes());
@@ -218,7 +217,8 @@ pub(super) fn from_txdata<'txin>(
                     let tap_script = wit_stack.pop().ok_or(Error::UnexpectedStackEnd)?;
                     let ctrl_blk =
                         ControlBlock::decode(ctrl_blk).map_err(Error::ControlBlockParse)?;
-                    let tap_script = script_from_stack_elem::<Tap>(&tap_script)?;
+                    let tap_script =
+                        script_from_stack_elem::<Tap>(&tap_script).map_err(Error::Decode)?;
                     let ms = tap_script.to_no_checks_ms();
                     // Creating new contexts is cheap
                     let secp = bitcoin::secp256k1::Secp256k1::verification_only();
@@ -283,7 +283,8 @@ pub(super) fn from_txdata<'txin>(
                                     Err(Error::NonEmptyScriptSig)
                                 } else {
                                     // parse wsh with Segwitv0 context
-                                    let miniscript = script_from_stack_elem::<Segwitv0>(&elem)?;
+                                    let miniscript = script_from_stack_elem::<Segwitv0>(&elem)
+                                        .map_err(Error::Decode)?;
                                     let script = miniscript.encode();
                                     let miniscript = miniscript.to_no_checks_ms();
                                     let scripthash = sha256::Hash::hash(script.as_bytes());
@@ -306,7 +307,7 @@ pub(super) fn from_txdata<'txin>(
                     }
                 }
                 // normal p2sh parsed in Legacy context
-                let miniscript = script_from_stack_elem::<Legacy>(&elem)?;
+                let miniscript = script_from_stack_elem::<Legacy>(&elem).map_err(Error::Decode)?;
                 let script = miniscript.encode();
                 let miniscript = miniscript.to_no_checks_ms();
                 if wit_stack.is_empty() {
@@ -326,7 +327,8 @@ pub(super) fn from_txdata<'txin>(
     } else {
         if wit_stack.is_empty() {
             // Bare script parsed in BareCtx
-            let miniscript = Miniscript::<bitcoin::PublicKey, BareCtx>::decode_consensus(spk)?;
+            let miniscript = Miniscript::<bitcoin::PublicKey, BareCtx>::decode_consensus(spk)
+                .map_err(Error::Decode)?;
             let miniscript = miniscript.to_no_checks_ms();
             Ok((Inner::Script(miniscript, ScriptType::Bare), ssig_stack, Some(spk.to_owned())))
         } else {
@@ -525,7 +527,7 @@ mod tests {
         spk[0] = 100;
         let spk = bitcoin::ScriptBuf::from(spk);
         let err = from_txdata(&spk, &bitcoin::ScriptBuf::new(), &empty_wit).unwrap_err();
-        assert_eq!(&err.to_string()[0..12], "parse error:");
+        assert_eq!(err.to_string(), "push 5edd of length 2 parses as a negative number -23902 which does not occur in Miniscript");
 
         // Witness is nonempty
         let wit = Witness::from_slice(&[vec![]]);
@@ -696,7 +698,7 @@ mod tests {
         assert_eq!(script_code, Some(spk.clone()));
 
         let err = from_txdata(&blank_script, &blank_script, &empty_wit).unwrap_err();
-        assert_eq!(&err.to_string()[0..12], "parse error:");
+        assert_eq!(err.to_string(), "unexpected start-of-script when decoding back-to-front");
 
         // nonempty witness
         let wit = Witness::from_slice(&[vec![]]);
@@ -758,7 +760,10 @@ mod tests {
         // with incorrect witness
         let wit = Witness::from_slice(&[spk.to_bytes()]);
         let err = from_txdata(&spk, &blank_script, &wit).unwrap_err();
-        assert_eq!(&err.to_string()[0..12], "parse error:");
+        assert_eq!(
+            err.to_string(),
+            "failed to parse Segwitv0 key: slice length should be 33 or 65 bytes, got: 32"
+        );
 
         // with correct witness
         let (inner, stack, script_code) =
@@ -803,7 +808,7 @@ mod tests {
         // with incorrect witness
         let wit = Witness::from_slice(&[spk.to_bytes()]);
         let err = from_txdata(&spk, &script_sig, &wit).unwrap_err();
-        assert_eq!(&err.to_string()[0..12], "parse error:");
+        assert_eq!(err.to_string(), "unexpected start-of-script when decoding back-to-front");
 
         // with incorrect scriptsig
         let err = from_txdata(&spk, &redeem_script, &wit_stack).unwrap_err();

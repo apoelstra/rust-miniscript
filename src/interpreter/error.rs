@@ -32,6 +32,8 @@ pub enum Error {
     ControlBlockVerificationError,
     /// General Interpreter error.
     CouldNotEvaluate,
+    /// Error decoding Miniscript from script.
+    Decode(crate::miniscript::decode::Error),
     /// ECDSA Signature related error
     EcdsaSig(bitcoin::ecdsa::Error),
     /// We expected a push (including a `OP_1` but no other numeric pushes)
@@ -56,8 +58,6 @@ pub enum Error {
     InvalidSchnorrSignature(bitcoin::key::XOnlyPublicKey),
     /// Last byte of this signature isn't a standard sighash type
     NonStandardSighash(Vec<u8>),
-    /// Miniscript error
-    Miniscript(crate::Error),
     /// MultiSig requires 1 extra zero element apart from the `k` signatures
     MissingExtraZeroMultiSig,
     /// Script abortion because of incorrect dissatisfaction for multisig.
@@ -134,6 +134,7 @@ impl fmt::Display for Error {
             Error::EcdsaSig(ref s) => write!(f, "Ecdsa sig error: {}", s),
             Error::ExpectedPush => f.write_str("expected push in script"),
             Error::CouldNotEvaluate => f.write_str("Interpreter Error: Could not evaluate"),
+            Error::Decode(ref e) => e.fmt(f),
             Error::HashPreimageLengthMismatch => f.write_str("Hash preimage should be 32 bytes"),
             Error::IncorrectPubkeyHash => f.write_str("public key did not match scriptpubkey"),
             Error::IncorrectScriptHash => f.write_str("redeem script did not match scriptpubkey"),
@@ -152,7 +153,6 @@ impl fmt::Display for Error {
             }
             Error::NonEmptyWitness => f.write_str("legacy spend had nonempty witness"),
             Error::NonEmptyScriptSig => f.write_str("segwit spend had nonempty scriptsig"),
-            Error::Miniscript(ref e) => write!(f, "parse error: {}", e),
             Error::MissingExtraZeroMultiSig => f.write_str("CMS missing extra zero"),
             Error::MultiSigEvaluationError => {
                 f.write_str("CMS script aborted, incorrect satisfaction/dissatisfaction")
@@ -227,8 +227,8 @@ impl error::Error for Error {
             | UnexpectedStackElementPush
             | VerifyFailed => None,
             ControlBlockParse(e) => Some(e),
+            Decode(e) => Some(e),
             EcdsaSig(e) => Some(e),
-            Miniscript(e) => Some(e),
             Secp(e) => Some(e),
             SchnorrSig(e) => Some(e),
             SighashError(e) => Some(e),
@@ -254,11 +254,6 @@ impl From<bitcoin::ecdsa::Error> for Error {
 #[doc(hidden)]
 impl From<bitcoin::taproot::SigFromSliceError> for Error {
     fn from(e: bitcoin::taproot::SigFromSliceError) -> Error { Error::SchnorrSig(e) }
-}
-
-#[doc(hidden)]
-impl From<crate::Error> for Error {
-    fn from(e: crate::Error) -> Error { Error::Miniscript(e) }
 }
 
 /// A type of representing which keys errored during interpreter checksig evaluation

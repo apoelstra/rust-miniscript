@@ -686,7 +686,9 @@ impl<Ctx: ScriptContext> Miniscript<Ctx::Key, Ctx> {
     /// It may make sense to use this method when parsing Script that is already
     /// embedded in the chain. While it is inadvisable to use insane Miniscripts,
     /// once it's on the chain you don't have much choice anymore.
-    pub fn decode_consensus(script: &script::Script) -> Result<Miniscript<Ctx::Key, Ctx>, Error> {
+    pub fn decode_consensus(
+        script: &script::Script,
+    ) -> Result<Miniscript<Ctx::Key, Ctx>, decode::Error> {
         // FIXME by using ValidationParams::MAX we actually parse more than is allowed
         // by consensus; in particular, we don't enforce size limits. If we want to do
         // this, we need to add a new Ctx::CONSENSUS constant and use that.
@@ -697,16 +699,20 @@ impl<Ctx: ScriptContext> Miniscript<Ctx::Key, Ctx> {
     pub fn decode_with_validation_params(
         script: &script::Script,
         params: &ValidationParams,
-    ) -> Result<Miniscript<Ctx::Key, Ctx>, Error> {
-        let tokens = lex(script)?;
+    ) -> Result<Miniscript<Ctx::Key, Ctx>, decode::Error> {
+        let tokens = lex(script).map_err(decode::Error::Lex)?;
         let mut iter = TokenIter::new(tokens);
 
         let top = decode::decode(&mut iter)?;
-        types::Type::type_check(&top.node)?;
+        types::Type::type_check(&top.node)
+            .map_err(ConstructError::TypeCheck)
+            .map_err(decode::Error::Construct)?;
         if let Some(leading) = iter.next() {
-            Err(Error::Trailing(leading.to_string()))
+            Err(decode::Error::Trailing(leading))
         } else {
-            top.validate(params).map_err(Error::Validation)?;
+            top.validate(params)
+                .map_err(ConstructError::Validation)
+                .map_err(decode::Error::Construct)?;
             Ok(top)
         }
     }
@@ -743,7 +749,7 @@ impl<Ctx: ScriptContext> Miniscript<Ctx::Key, Ctx> {
     ///     .expect("Compressed keys are allowed in Segwit context");
     ///
     /// ```
-    pub fn decode(script: &script::Script) -> Result<Miniscript<Ctx::Key, Ctx>, Error> {
+    pub fn decode(script: &script::Script) -> Result<Miniscript<Ctx::Key, Ctx>, decode::Error> {
         let ms = Self::decode_with_validation_params(script, &Ctx::SANE)?;
         Ok(ms)
     }

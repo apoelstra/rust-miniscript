@@ -210,7 +210,8 @@ fn get_descriptor(psbt: &Psbt, index: usize) -> Result<Descriptor<PublicKey>, In
                     p2wsh_expected: script_pubkey.clone(),
                 });
             }
-            let ms = Miniscript::<bitcoin::PublicKey, Segwitv0>::decode_consensus(witness_script)?;
+            let ms = Miniscript::<bitcoin::PublicKey, Segwitv0>::decode_consensus(witness_script)
+                .map_err(InputError::Decode)?;
             Ok(Descriptor::new_wsh(ms.substitute_raw_pkh(&map)).map_err(InputError::Validation)?)
         } else {
             Err(InputError::MissingWitnessScript)
@@ -236,7 +237,8 @@ fn get_descriptor(psbt: &Psbt, index: usize) -> Result<Descriptor<PublicKey>, In
                         }
                         let ms = Miniscript::<bitcoin::PublicKey, Segwitv0>::decode_consensus(
                             witness_script,
-                        )?;
+                        )
+                        .map_err(InputError::Decode)?;
                         Ok(Descriptor::new_sh_wsh(ms.substitute_raw_pkh(&map))
                             .map_err(InputError::Validation)?)
                     } else {
@@ -270,7 +272,8 @@ fn get_descriptor(psbt: &Psbt, index: usize) -> Result<Descriptor<PublicKey>, In
                     if let Some(ref redeem_script) = inp.redeem_script {
                         let ms = Miniscript::<bitcoin::PublicKey, Legacy>::decode_consensus(
                             redeem_script,
-                        )?;
+                        )
+                        .map_err(InputError::Decode)?;
                         Ok(Descriptor::new_sh(ms).map_err(InputError::Validation)?)
                     } else {
                         Err(InputError::MissingWitnessScript)
@@ -286,7 +289,8 @@ fn get_descriptor(psbt: &Psbt, index: usize) -> Result<Descriptor<PublicKey>, In
         if inp.redeem_script.is_some() {
             return Err(InputError::NonEmptyRedeemScript);
         }
-        let ms = Miniscript::<bitcoin::PublicKey, BareCtx>::decode_consensus(&script_pubkey)?;
+        let ms = Miniscript::<bitcoin::PublicKey, BareCtx>::decode_consensus(&script_pubkey)
+            .map_err(InputError::Decode)?;
         Ok(Descriptor::new_bare(ms.substitute_raw_pkh(&map)).map_err(InputError::Validation)?)
     }
 }
@@ -416,7 +420,7 @@ fn finalize_input_helper<C: secp256k1::Verification>(
             } else {
                 desc.get_satisfaction_mall(sat)
             }
-            .map_err(|e| Error::InputError(InputError::MiniscriptError(e), index))?
+            .map_err(|err| Error::NoSatisfaction { err, index })?
         }
     };
 

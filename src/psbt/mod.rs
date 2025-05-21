@@ -52,6 +52,13 @@ pub enum Error {
         /// requested index
         index: usize,
     },
+    /// Failed to produce a satisfaction for an input descriptor.
+    NoSatisfaction {
+        /// Error returned from [`Descriptor::get_satisfaction`].
+        err: crate::Error,
+        /// Input index.
+        index: usize,
+    },
 }
 
 impl fmt::Display for Error {
@@ -66,6 +73,9 @@ impl fmt::Display for Error {
                 "psbt input index {} out of bounds: psbt.inputs.len() {}",
                 index, psbt_inp
             ),
+            Error::NoSatisfaction { ref err, index } => {
+                write!(f, "failed to satisfy input {}: {}", index, err,)
+            }
         }
     }
 }
@@ -78,6 +88,7 @@ impl error::Error for Error {
         match self {
             InputError(e, _) => Some(e),
             WrongInputCount { .. } | InputIdxOutofBounds { .. } => None,
+            NoSatisfaction { ref err, .. } => Some(err),
         }
     }
 }
@@ -94,6 +105,8 @@ pub enum InputError {
     /// satisfied. We cannot return a detailed error because we try all miniscripts
     /// in script spend path, we cannot know which miniscript failed.
     CouldNotSatisfyTr,
+    /// Error decoding Script into Miniscript.
+    Decode(crate::miniscript::decode::Error),
     /// Error doing an interpreter-check on a finalized psbt
     Interpreter(interpreter::Error),
     /// Redeem script does not match the p2sh hash
@@ -117,8 +130,6 @@ pub enum InputError {
         /// The (incorrect) signature
         sig: Vec<u8>,
     },
-    /// Pass through the underlying errors in miniscript
-    MiniscriptError(super::Error),
     /// Missing redeem script for p2sh
     MissingRedeemScript,
     /// Missing witness
@@ -167,10 +178,10 @@ impl error::Error for InputError {
             | NonEmptyRedeemScript
             | NonStandardSighashType(_)
             | WrongSighashFlag { .. } => None,
+            Decode(e) => Some(e),
             SecpErr(e) => Some(e),
             KeyErr(e) => Some(e),
             Interpreter(e) => Some(e),
-            MiniscriptError(e) => Some(e),
             Validation(e) => Some(e),
         }
     }
@@ -179,6 +190,7 @@ impl error::Error for InputError {
 impl fmt::Display for InputError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
+            InputError::Decode(ref e) => e.fmt(f),
             InputError::InvalidSignature { ref pubkey, ref sig } => {
                 write!(f, "PSBT: bad signature {} for key {:?}", pubkey, sig)
             }
@@ -195,7 +207,6 @@ impl fmt::Display for InputError {
                 "Witness script {} does not match the p2wsh script {}",
                 witness_script, p2wsh_expected
             ),
-            InputError::MiniscriptError(ref e) => write!(f, "Miniscript Error: {}", e),
             InputError::MissingWitness => write!(f, "PSBT is missing witness"),
             InputError::MissingRedeemScript => write!(f, "PSBT is Redeem script"),
             InputError::MissingUtxo => {
@@ -222,11 +233,6 @@ impl fmt::Display for InputError {
             InputError::Validation(ref e) => e.fmt(f),
         }
     }
-}
-
-#[doc(hidden)]
-impl From<super::Error> for InputError {
-    fn from(e: super::Error) -> InputError { InputError::MiniscriptError(e) }
 }
 
 #[doc(hidden)]
