@@ -15,7 +15,6 @@ use bitcoin::{script, Address, Network, ScriptBuf, Weight};
 
 use super::{SortedMultiVec, Wpkh, Wsh};
 use crate::descriptor::{write_descriptor, DefiniteDescriptorKey};
-use crate::expression::{self, FromTree};
 use crate::miniscript::context::ScriptContext;
 use crate::miniscript::limits::MAX_PUBKEYS_PER_MULTISIG;
 use crate::miniscript::satisfy::{Placeholder, Satisfaction};
@@ -24,8 +23,8 @@ use crate::policy::{semantic, Liftable};
 use crate::prelude::*;
 use crate::util::{varint_len, witness_to_scriptsig};
 use crate::{
-    push_opcode_size, Error, ForEachKey, FromStrKey, Legacy, Miniscript, MiniscriptKey, Satisfier,
-    Segwitv0, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
+    expression, push_opcode_size, Error, ForEachKey, FromStrKey, Legacy, Miniscript, MiniscriptKey,
+    Satisfier, Segwitv0, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
 };
 
 /// A Legacy p2sh Descriptor
@@ -81,8 +80,9 @@ impl<Pk: MiniscriptKey> fmt::Display for Sh<Pk> {
     }
 }
 
-impl<Pk: FromStrKey> crate::expression::FromTree for Sh<Pk> {
-    fn from_tree(top: expression::TreeIterItem) -> Result<Self, Error> {
+impl<Pk: FromStrKey> Sh<Pk> {
+    /// Parse from an expression tree.
+    pub fn from_tree(top: expression::TreeIterItem) -> Result<Self, Error> {
         let top = top
             .verify_toplevel("sh", 1..=1)
             .map_err(From::from)

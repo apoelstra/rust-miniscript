@@ -12,7 +12,6 @@ use bitcoin::{Address, Network, ScriptBuf, Weight};
 
 use super::SortedMultiVec;
 use crate::descriptor::{write_descriptor, DefiniteDescriptorKey};
-use crate::expression::{self, FromTree};
 use crate::miniscript::context::ScriptContext;
 use crate::miniscript::limits::MAX_PUBKEYS_PER_MULTISIG;
 use crate::miniscript::satisfy::{Placeholder, Satisfaction, Witness};
@@ -21,8 +20,8 @@ use crate::policy::{semantic, Liftable};
 use crate::prelude::*;
 use crate::util::varint_len;
 use crate::{
-    Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, Satisfier, Segwitv0, Threshold,
-    ToPublicKey, TranslateErr, Translator, ValidationError,
+    expression, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, Satisfier, Segwitv0,
+    Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
 };
 /// A Segwitv0 wsh descriptor
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -239,8 +238,9 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Wsh<Pk> {
     }
 }
 
-impl<Pk: FromStrKey> crate::expression::FromTree for Wsh<Pk> {
-    fn from_tree(top: expression::TreeIterItem) -> Result<Self, Error> {
+impl<Pk: FromStrKey> Wsh<Pk> {
+    /// Parse from an expression tree.
+    pub fn from_tree(top: expression::TreeIterItem) -> Result<Self, Error> {
         let top = top
             .verify_toplevel("wsh", 1..=1)
             .map_err(From::from)
@@ -465,8 +465,9 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Wpkh<Pk> {
     }
 }
 
-impl<Pk: FromStrKey> crate::expression::FromTree for Wpkh<Pk> {
-    fn from_tree(top: expression::TreeIterItem) -> Result<Self, Error> {
+impl<Pk: FromStrKey> Wpkh<Pk> {
+    /// Parse from an expression tree.
+    pub fn from_tree(top: expression::TreeIterItem) -> Result<Self, Error> {
         let pk = top
             .verify_terminal_parent("wpkh", "public key")
             .map_err(Error::Parse)?;

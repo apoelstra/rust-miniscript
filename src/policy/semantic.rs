@@ -275,16 +275,17 @@ impl<Pk: MiniscriptKey> fmt::Display for Policy<Pk> {
 
 impl<Pk: FromStrKey> str::FromStr for Policy<Pk> {
     type Err = Error;
-    fn from_str(s: &str) -> Result<Policy<Pk>, Error> {
+    fn from_str(s: &str) -> Result<Self, Error> {
         let tree = expression::Tree::from_str(s).map_err(Error::Parse)?;
-        expression::FromTree::from_tree(tree.root())
+        Self::from_tree(tree.root())
     }
 }
 
 serde_string_impl_pk!(Policy, "a miniscript semantic policy");
 
-impl<Pk: FromStrKey> expression::FromTree for Policy<Pk> {
-    fn from_tree(root: expression::TreeIterItem) -> Result<Policy<Pk>, Error> {
+impl<Pk: FromStrKey> Policy<Pk> {
+    /// Parse from an expression tree.
+    pub fn from_tree(root: expression::TreeIterItem) -> Result<Policy<Pk>, Error> {
         root.verify_no_curly_braces()
             .map_err(From::from)
             .map_err(Error::Parse)?;

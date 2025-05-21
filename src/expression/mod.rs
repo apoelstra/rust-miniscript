@@ -34,7 +34,7 @@ pub use self::error::{ParseNumError, ParseThresholdError, ParseTreeError};
 use crate::blanket_traits::StaticDebugAndDisplay;
 use crate::descriptor::checksum::verify_checksum;
 use crate::prelude::*;
-use crate::{AbsLockTime, Error, ParseError, RelLockTime, Threshold, MAX_RECURSION_DEPTH};
+use crate::{AbsLockTime, ParseError, RelLockTime, Threshold, MAX_RECURSION_DEPTH};
 
 /// Allowed characters are descriptor strings.
 pub const INPUT_CHARSET: &str = "0123456789()[],'/*abcdefgh@:$%{}IJKLMNOPQRSTUVWXYZ&+-.;<=>?!^_|~ijklmnopqrstuvwxyzABCDEFGH`#\"\\ ";
@@ -170,12 +170,6 @@ pub enum Parens {
     Round,
     /// Curly braces: `{` and `}`.
     Curly,
-}
-
-/// A trait for extracting a structure from a Tree representation in token form
-pub trait FromTree: Sized {
-    /// Extract a structure from Tree representation
-    fn from_tree(root: TreeIterItem) -> Result<Self, Error>;
 }
 
 impl<'s> TreeIterItem<'s> {

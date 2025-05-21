@@ -17,7 +17,6 @@ use {
     core::cmp::Reverse,
 };
 
-use crate::expression::{self, FromTree};
 use crate::iter::{Tree, TreeLike};
 use crate::miniscript::types::extra_props::TimelockInfo;
 use crate::prelude::*;
@@ -25,8 +24,8 @@ use crate::sync::Arc;
 #[cfg(all(doc, not(feature = "compiler")))]
 use crate::Descriptor;
 use crate::{
-    AbsLockTime, Error, ForEachKey, FromStrKey, MiniscriptKey, RelLockTime, Threshold, Translator,
-    ValidationError, ValidationParams,
+    expression, AbsLockTime, Error, ForEachKey, FromStrKey, MiniscriptKey, RelLockTime, Threshold,
+    Translator, ValidationError, ValidationParams,
 };
 
 /// Maximum TapLeafs allowed in a compiled TapTree
@@ -791,7 +790,7 @@ impl<Pk: FromStrKey> str::FromStr for Policy<Pk> {
     type Err = Error;
     fn from_str(s: &str) -> Result<Policy<Pk>, Error> {
         let tree = expression::Tree::from_str(s).map_err(Error::Parse)?;
-        let policy: Policy<Pk> = FromTree::from_tree(tree.root())?;
+        let policy = Policy::<Pk>::from_tree(tree.root())?;
         policy
             .validate(&ValidationParams::SANE)
             .map_err(Error::Validation)?;
@@ -801,8 +800,9 @@ impl<Pk: FromStrKey> str::FromStr for Policy<Pk> {
 
 serde_string_impl_pk!(Policy, "a miniscript concrete policy");
 
-impl<Pk: FromStrKey> expression::FromTree for Policy<Pk> {
-    fn from_tree(root: expression::TreeIterItem) -> Result<Policy<Pk>, Error> {
+impl<Pk: FromStrKey> Policy<Pk> {
+    /// Parse from an expression tree.
+    pub fn from_tree(root: expression::TreeIterItem) -> Result<Policy<Pk>, Error> {
         root.verify_no_curly_braces()
             .map_err(From::from)
             .map_err(Error::Parse)?;

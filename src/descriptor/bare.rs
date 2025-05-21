@@ -13,7 +13,6 @@ use bitcoin::script::{self, PushBytes};
 use bitcoin::{Address, Network, ScriptBuf, Weight};
 
 use crate::descriptor::{write_descriptor, DefiniteDescriptorKey};
-use crate::expression::{self, FromTree};
 use crate::miniscript::context::ScriptContext;
 use crate::miniscript::satisfy::{Placeholder, Satisfaction, Witness};
 use crate::plan::AssetProvider;
@@ -21,8 +20,8 @@ use crate::policy::{semantic, Liftable};
 use crate::prelude::*;
 use crate::util::{varint_len, witness_to_scriptsig};
 use crate::{
-    BareCtx, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, Satisfier, ToPublicKey,
-    TranslateErr, Translator, ValidationError,
+    expression, BareCtx, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, Satisfier,
+    ToPublicKey, TranslateErr, Translator, ValidationError,
 };
 
 /// Create a Bare Descriptor. That is descriptor that is
@@ -167,8 +166,9 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Bare<Pk> {
     fn lift(&self) -> Result<semantic::Policy<Pk>, ValidationError> { self.ms.lift() }
 }
 
-impl<Pk: FromStrKey> FromTree for Bare<Pk> {
-    fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
+impl<Pk: FromStrKey> Bare<Pk> {
+    /// Parse from an expression tree.
+    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
         let sub = Miniscript::<Pk, BareCtx>::from_tree(root)?;
         Bare::new(sub).map_err(Error::Validation)
     }
@@ -359,8 +359,9 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Pkh<Pk> {
     }
 }
 
-impl<Pk: FromStrKey> FromTree for Pkh<Pk> {
-    fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
+impl<Pk: FromStrKey> Pkh<Pk> {
+    /// Parse from an expression tree.
+    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
         let pk = root
             .verify_terminal_parent("pkh", "public key")
             .map_err(Error::Parse)?;

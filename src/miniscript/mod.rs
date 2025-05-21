@@ -42,7 +42,7 @@ use sync::Arc;
 pub use self::context::ScriptContext;
 pub use self::error::ConstructError;
 use self::lex::{lex, TokenIter};
-use crate::expression::{FromTree, TreeIterItem};
+use crate::expression::TreeIterItem;
 use crate::miniscript::decode::Terminal;
 use crate::{
     expression, plan, Error, ForEachKey, FromStrKey, MiniscriptKey, ToPublicKey, Translator,
@@ -982,20 +982,15 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     ) -> Result<Self, Error> {
         // This checks for invalid ASCII chars
         let top = expression::Tree::from_str(s).map_err(Error::Parse)?;
-        let ms: Miniscript<Pk, Ctx> = expression::FromTree::from_tree(top.root())?;
+        let ms = Miniscript::<Pk, Ctx>::from_tree(top.root())?;
         ms.validate(params).map_err(Error::Validation)?;
         Ok(ms)
     }
 }
 
-impl<Pk: FromStrKey, Ctx: ScriptContext> FromTree for Arc<Miniscript<Pk, Ctx>> {
-    fn from_tree(root: TreeIterItem) -> Result<Self, Error> {
-        Miniscript::from_tree(root).map(Arc::new)
-    }
-}
-
-impl<Pk: FromStrKey, Ctx: ScriptContext> FromTree for Miniscript<Pk, Ctx> {
-    fn from_tree(root: TreeIterItem) -> Result<Self, Error> {
+impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
+    /// Parse from an expression tree.
+    pub fn from_tree(root: TreeIterItem) -> Result<Self, Error> {
         #[allow(clippy::type_complexity)]
         fn binary<Pk: MiniscriptKey, Ctx: ScriptContext>(
             node: expression::TreeIterItem,

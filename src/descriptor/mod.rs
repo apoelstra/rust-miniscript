@@ -21,7 +21,6 @@ use bitcoin::{
 };
 use sync::Arc;
 
-use crate::expression::FromTree as _;
 use crate::miniscript::decode::Terminal;
 use crate::miniscript::limits::MAX_PUBKEYS_PER_MULTISIG;
 use crate::miniscript::{satisfy, Legacy, Miniscript, ScriptContext as _, Segwitv0, Tap};
@@ -1018,9 +1017,9 @@ impl Descriptor<DefiniteDescriptorKey> {
     }
 }
 
-impl<Pk: FromStrKey> crate::expression::FromTree for Descriptor<Pk> {
-    /// Parse an expression tree into a descriptor.
-    fn from_tree(top: expression::TreeIterItem) -> Result<Descriptor<Pk>, Error> {
+impl<Pk: FromStrKey> Descriptor<Pk> {
+    /// Parse from an expression tree.
+    pub fn from_tree(top: expression::TreeIterItem) -> Result<Descriptor<Pk>, Error> {
         Ok(match (top.name(), top.n_children()) {
             ("pkh", 1) => Descriptor::Pkh(Pkh::from_tree(top)?),
             ("wpkh", 1) => Descriptor::Wpkh(Wpkh::from_tree(top)?),

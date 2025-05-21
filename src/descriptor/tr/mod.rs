@@ -8,7 +8,6 @@ use sync::Arc;
 
 use super::checksum;
 use crate::descriptor::DefiniteDescriptorKey;
-use crate::expression::{self, FromTree};
 use crate::miniscript::satisfy::{Placeholder, Satisfaction, SchnorrSigType, Witness};
 use crate::plan::AssetProvider;
 use crate::policy::semantic::Policy;
@@ -16,7 +15,7 @@ use crate::policy::Liftable;
 use crate::prelude::*;
 use crate::util::{varint_len, witness_size};
 use crate::{
-    Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, ParseError, Satisfier,
+    expression, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, ParseError, Satisfier,
     ScriptContext as _, Tap, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
 };
 
@@ -344,8 +343,9 @@ impl<Pk: FromStrKey> core::str::FromStr for Tr<Pk> {
     }
 }
 
-impl<Pk: FromStrKey> crate::expression::FromTree for Tr<Pk> {
-    fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
+impl<Pk: FromStrKey> Tr<Pk> {
+    /// Parse from an expression tree.
+    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
         use crate::expression::{Parens, ParseTreeError};
 
         root.verify_toplevel("tr", 1..=2)
