@@ -381,7 +381,7 @@ impl<Pk: FromStrKey> Tr<Pk> {
                     .map_err(Error::Parse)?;
                 tree_builder.push_inner_node()?;
             } else {
-                let script = Miniscript::from_tree(node)?;
+                let script = Miniscript::from_tree(node).map_err(Error::MiniscriptParse)?;
                 // FIXME hack for https://github.com/rust-bitcoin/rust-miniscript/issues/734
                 script
                     .validate(&Tap::CONSENSUS)

@@ -136,7 +136,7 @@ pub use crate::interpreter::Interpreter;
 pub use crate::miniscript::context::{BareCtx, Legacy, ScriptContext, Segwitv0, SigType, Tap};
 pub use crate::miniscript::decode::Terminal;
 pub use crate::miniscript::satisfy::{Preimage32, Satisfier};
-pub use crate::miniscript::{hash256, Miniscript};
+pub use crate::miniscript::{hash256, Miniscript, ParseMiniscriptError};
 use crate::prelude::*;
 pub use crate::primitives::absolute_locktime::{AbsLockTime, AbsLockTimeError};
 pub use crate::primitives::relative_locktime::{RelLockTime, RelLockTimeError};
@@ -435,6 +435,8 @@ pub trait ForEachKey<Pk: MiniscriptKey> {
 pub enum Error {
     /// Error constructing a Miniscript.
     MiniscriptConstruction(crate::miniscript::ConstructError),
+    /// Error constructing a Miniscript.
+    MiniscriptParse(ParseMiniscriptError),
     /// rust-bitcoin address error
     AddrError(bitcoin::address::ParseError),
     /// rust-bitcoin p2sh address error
@@ -475,6 +477,7 @@ impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
             Error::MiniscriptConstruction(ref e) => e.fmt(f),
+            Error::MiniscriptParse(ref e) => e.fmt(f),
             Error::AddrError(ref e) => fmt::Display::fmt(e, f),
             Error::AddrP2shError(ref e) => fmt::Display::fmt(e, f),
             Error::MissingSig(ref pk) => write!(f, "missing signature for key {:?}", pk),
@@ -505,6 +508,7 @@ impl std::error::Error for Error {
             | BareDescriptorAddr
             | TrNoScriptCode => None,
             MiniscriptConstruction(e) => Some(e),
+            MiniscriptParse(e) => Some(e),
             AddrError(e) => Some(e),
             AddrP2shError(e) => Some(e),
             Secp(e) => Some(e),

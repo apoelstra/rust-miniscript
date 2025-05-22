@@ -93,7 +93,7 @@ impl<Pk: FromStrKey> Sh<Pk> {
             "wpkh" => ShInner::Wpkh(Wpkh::from_tree(top)?),
             "sortedmulti" => ShInner::SortedMulti(SortedMultiVec::from_tree(top)?),
             _ => {
-                let sub = Miniscript::from_tree(top)?;
+                let sub = Miniscript::from_tree(top).map_err(Error::MiniscriptParse)?;
                 sub.validate(&Legacy::SANE).map_err(Error::Validation)?;
                 ShInner::Ms(sub)
             }

@@ -169,7 +169,7 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Bare<Pk> {
 impl<Pk: FromStrKey> Bare<Pk> {
     /// Parse from an expression tree.
     pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
-        let sub = Miniscript::<Pk, BareCtx>::from_tree(root)?;
+        let sub = Miniscript::<Pk, BareCtx>::from_tree(root).map_err(Error::MiniscriptParse)?;
         Bare::new(sub).map_err(Error::Validation)
     }
 }

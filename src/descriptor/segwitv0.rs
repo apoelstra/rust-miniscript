@@ -249,7 +249,7 @@ impl<Pk: FromStrKey> Wsh<Pk> {
         if top.name() == "sortedmulti" {
             return Ok(Wsh { inner: WshInner::SortedMulti(SortedMultiVec::from_tree(top)?) });
         }
-        let sub = Miniscript::from_tree(top)?;
+        let sub = Miniscript::from_tree(top).map_err(Error::MiniscriptParse)?;
         sub.validate(&Segwitv0::SANE).map_err(Error::Validation)?;
         Ok(Wsh { inner: WshInner::Ms(sub) })
     }
