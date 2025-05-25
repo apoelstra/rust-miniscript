@@ -191,53 +191,6 @@ impl<Pk: MiniscriptKey> Tr<Pk> {
         Ok(Weight::from_wu(wu as u64))
     }
 
-    /// Computes an upper bound on the weight of a satisfying witness to the
-    /// transaction.
-    ///
-    /// Assumes all ec-signatures are 73 bytes, including push opcode and
-    /// sighash suffix. Includes the weight of the VarInts encoding the
-    /// scriptSig and witness stack length.
-    ///
-    /// # Errors
-    /// When the descriptor is impossible to safisfy (ex: sh(OP_FALSE)).
-    #[deprecated(
-        since = "10.0.0",
-        note = "Use max_weight_to_satisfy instead. The method to count bytes was redesigned and the results will differ from max_weight_to_satisfy. For more details check rust-bitcoin/rust-miniscript#476."
-    )]
-    pub fn max_satisfaction_weight(&self) -> Result<usize, Error> {
-        let tree = match self.tap_tree() {
-            // key spend path:
-            // scriptSigLen(4) + stackLen(1) + stack[Sig]Len(1) + stack[Sig](65)
-            None => return Ok(4 + 1 + 1 + 65),
-            // script path spend..
-            Some(tree) => tree,
-        };
-
-        tree.leaves()
-            .filter_map(|leaf| {
-                let script_size = leaf.miniscript().script_size();
-                let max_sat_elems = leaf.miniscript().max_satisfaction_witness_elements().ok()?;
-                let max_sat_size = leaf.miniscript().max_satisfaction_size().ok()?;
-                let control_block_size = control_block_len(leaf.depth());
-                Some(
-                    // scriptSig len byte
-                    4 +
-                    // witness field stack len (+2 for control block & script)
-                    varint_len(max_sat_elems + 2) +
-                    // size of elements to satisfy script
-                    max_sat_size +
-                    // second to last element: script
-                    varint_len(script_size) +
-                    script_size +
-                    // last element: control block
-                    varint_len(control_block_size) +
-                    control_block_size,
-                )
-            })
-            .max()
-            .ok_or(Error::ImpossibleSatisfaction)
-    }
-
     /// Converts keys from one type of public key to another.
     pub fn translate_pk<T>(
         &self,

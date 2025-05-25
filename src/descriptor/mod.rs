@@ -381,32 +381,6 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
         Ok(weight)
     }
 
-    /// Computes an upper bound on the weight of a satisfying witness to the
-    /// transaction.
-    ///
-    /// Assumes all ec-signatures are 73 bytes, including push opcode and
-    /// sighash suffix. Includes the weight of the VarInts encoding the
-    /// scriptSig and witness stack length.
-    ///
-    /// # Errors
-    /// When the descriptor is impossible to safisfy (ex: sh(OP_FALSE)).
-    #[deprecated(
-        since = "10.0.0",
-        note = "Use max_weight_to_satisfy instead. The method to count bytes was redesigned and the results will differ from max_weight_to_satisfy. For more details check rust-bitcoin/rust-miniscript#476."
-    )]
-    #[allow(deprecated)]
-    pub fn max_satisfaction_weight(&self) -> Result<usize, Error> {
-        let weight = match *self {
-            Descriptor::Bare(ref bare) => bare.max_satisfaction_weight()?,
-            Descriptor::Pkh(ref pkh) => pkh.max_satisfaction_weight(),
-            Descriptor::Wpkh(ref wpkh) => wpkh.max_satisfaction_weight(),
-            Descriptor::Wsh(ref wsh) => wsh.max_satisfaction_weight()?,
-            Descriptor::Sh(ref sh) => sh.max_satisfaction_weight()?,
-            Descriptor::Tr(ref tr) => tr.max_satisfaction_weight()?,
-        };
-        Ok(weight)
-    }
-
     /// Converts a descriptor using one kind of keys to another kind of key.
     pub fn translate_pk<T>(
         &self,

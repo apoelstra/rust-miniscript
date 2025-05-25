@@ -66,24 +66,6 @@ impl<Pk: MiniscriptKey> Bare<Pk> {
             .ok_or(Error::CouldNotSatisfy)
     }
 
-    /// Computes an upper bound on the weight of a satisfying witness to the
-    /// transaction.
-    ///
-    /// Assumes all ec-signatures are 73 bytes, including push opcode and
-    /// sighash suffix. Includes the weight of the VarInts encoding the
-    /// scriptSig and witness stack length.
-    ///
-    /// # Errors
-    /// When the descriptor is impossible to safisfy (ex: sh(OP_FALSE)).
-    #[deprecated(
-        since = "10.0.0",
-        note = "Use max_weight_to_satisfy instead. The method to count bytes was redesigned and the results will differ from max_weight_to_satisfy. For more details check rust-bitcoin/rust-miniscript#476."
-    )]
-    pub fn max_satisfaction_weight(&self) -> Result<usize, Error> {
-        let scriptsig_len = self.ms.max_satisfaction_size()?;
-        Ok(4 * (varint_len(scriptsig_len) + scriptsig_len))
-    }
-
     /// Converts the keys in the script from one type to another.
     pub fn translate_pk<T>(&self, t: &mut T) -> Result<Bare<T::TargetPk>, TranslateErr<T::Error>>
     where
@@ -230,18 +212,6 @@ impl<Pk: MiniscriptKey> Pkh<Pk> {
         let scriptsig_varint_diff = varint_len(scriptsig_size) - varint_len(0);
         Weight::from_vb((scriptsig_varint_diff + scriptsig_size) as u64).unwrap()
     }
-
-    /// Computes an upper bound on the weight of a satisfying witness to the
-    /// transaction.
-    ///
-    /// Assumes all ec-signatures are 73 bytes, including push opcode and
-    /// sighash suffix. Includes the weight of the VarInts encoding the
-    /// scriptSig and witness stack length.
-    #[deprecated(
-        since = "10.0.0",
-        note = "Use max_weight_to_satisfy instead. The method to count bytes was redesigned and the results will differ from max_weight_to_satisfy. For more details check rust-bitcoin/rust-miniscript#476."
-    )]
-    pub fn max_satisfaction_weight(&self) -> usize { 4 * (1 + 73 + BareCtx::pk_len(&self.pk)) }
 
     /// Converts the keys in a script from one type to another.
     pub fn translate_pk<T>(&self, t: &mut T) -> Result<Pkh<T::TargetPk>, TranslateErr<T::Error>>

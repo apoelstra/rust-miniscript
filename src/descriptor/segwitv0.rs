@@ -87,39 +87,6 @@ impl<Pk: MiniscriptKey> Wsh<Pk> {
         ))
     }
 
-    /// Computes an upper bound on the weight of a satisfying witness to the
-    /// transaction.
-    ///
-    /// Assumes all ec-signatures are 73 bytes, including push opcode and
-    /// sighash suffix. Includes the weight of the VarInts encoding the
-    /// scriptSig and witness stack length.
-    ///
-    /// # Errors
-    /// When the descriptor is impossible to safisfy (ex: sh(OP_FALSE)).
-    #[deprecated(
-        since = "10.0.0",
-        note = "Use max_weight_to_satisfy instead. The method to count bytes was redesigned and the results will differ from max_weight_to_satisfy. For more details check rust-bitcoin/rust-miniscript#476."
-    )]
-    pub fn max_satisfaction_weight(&self) -> Result<usize, Error> {
-        let (script_size, max_sat_elems, max_sat_size) = match self.inner {
-            WshInner::SortedMulti(ref smv) => (
-                smv.script_size(),
-                smv.max_satisfaction_witness_elements(),
-                smv.max_satisfaction_size(),
-            ),
-            WshInner::Ms(ref ms) => (
-                ms.script_size(),
-                ms.max_satisfaction_witness_elements()?,
-                ms.max_satisfaction_size()?,
-            ),
-        };
-        Ok(4 +  // scriptSig length byte
-            varint_len(script_size) +
-            script_size +
-            varint_len(max_sat_elems) +
-            max_sat_size)
-    }
-
     /// Converts the keys in a script from one type to another.
     pub fn translate_pk<T>(&self, t: &mut T) -> Result<Wsh<T::TargetPk>, TranslateErr<T::Error>>
     where
@@ -325,18 +292,6 @@ impl<Pk: MiniscriptKey> Wpkh<Pk> {
         let stack_varint_diff = varint_len(2) - varint_len(0);
         Weight::from_wu((stack_varint_diff + stack_items_size) as u64)
     }
-
-    /// Computes an upper bound on the weight of a satisfying witness to the
-    /// transaction.
-    ///
-    /// Assumes all ec-signatures are 73 bytes, including push opcode and
-    /// sighash suffix. Includes the weight of the VarInts encoding the
-    /// scriptSig and witness stack length.
-    #[deprecated(
-        since = "10.0.0",
-        note = "Use max_weight_to_satisfy instead. The method to count bytes was redesigned and the results will differ from max_weight_to_satisfy. For more details check rust-bitcoin/rust-miniscript#476."
-    )]
-    pub fn max_satisfaction_weight(&self) -> usize { 4 + 1 + 73 + Segwitv0::pk_len(&self.pk) }
 
     /// Converts the keys in a script from one type to another.
     pub fn translate_pk<T>(&self, t: &mut T) -> Result<Wpkh<T::TargetPk>, TranslateErr<T::Error>>

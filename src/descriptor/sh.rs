@@ -210,41 +210,6 @@ impl<Pk: MiniscriptKey> Sh<Pk> {
         }
     }
 
-    /// Computes an upper bound on the weight of a satisfying witness to the
-    /// transaction.
-    ///
-    /// Assumes all ECDSA signatures are 73 bytes, including push opcode and
-    /// sighash suffix. Includes the weight of the VarInts encoding the
-    /// scriptSig and witness stack length.
-    ///
-    /// # Errors
-    /// When the descriptor is impossible to safisfy (ex: sh(OP_FALSE)).
-    #[deprecated(
-        since = "10.0.0",
-        note = "Use max_weight_to_satisfy instead. The method to count bytes was redesigned and the results will differ from max_weight_to_satisfy. For more details check rust-bitcoin/rust-miniscript#476."
-    )]
-    #[allow(deprecated)]
-    pub fn max_satisfaction_weight(&self) -> Result<usize, Error> {
-        Ok(match self.inner {
-            // add weighted script sig, len byte stays the same
-            ShInner::Wsh(ref wsh) => 4 * 35 + wsh.max_satisfaction_weight()?,
-            ShInner::SortedMulti(ref smv) => {
-                let ss = smv.script_size();
-                let ps = push_opcode_size(ss);
-                let scriptsig_len = ps + ss + smv.max_satisfaction_size();
-                4 * (varint_len(scriptsig_len) + scriptsig_len)
-            }
-            // add weighted script sig, len byte stays the same
-            ShInner::Wpkh(ref wpkh) => 4 * 23 + wpkh.max_satisfaction_weight(),
-            ShInner::Ms(ref ms) => {
-                let ss = ms.script_size();
-                let ps = push_opcode_size(ss);
-                let scriptsig_len = ps + ss + ms.max_satisfaction_size()?;
-                4 * (varint_len(scriptsig_len) + scriptsig_len)
-            }
-        })
-    }
-
     /// Converts the keys in a script from one type to another.
     pub fn translate_pk<T>(&self, t: &mut T) -> Result<Sh<T::TargetPk>, TranslateErr<T::Error>>
     where
