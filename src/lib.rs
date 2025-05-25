@@ -433,10 +433,6 @@ pub trait ForEachKey<Pk: MiniscriptKey> {
 
 #[derive(Debug)]
 pub enum Error {
-    /// Error constructing a Miniscript.
-    MiniscriptConstruction(crate::miniscript::ConstructError),
-    /// Error constructing a Miniscript.
-    MiniscriptParse(ParseMiniscriptError),
     /// rust-bitcoin address error
     AddrError(bitcoin::address::ParseError),
     /// rust-bitcoin p2sh address error
@@ -445,12 +441,8 @@ pub enum Error {
     MissingSig(bitcoin::PublicKey),
     /// General failure to satisfy
     CouldNotSatisfy,
-    /// Typechecking failed
-    TypeCheck(String),
     /// Forward-secp related errors
     Secp(bitcoin::secp256k1::Error),
-    /// Tried to construct a Taproot tree which was too deep.
-    TapTreeDepthError(crate::descriptor::TapTreeDepthError),
     /// Miniscript is equivalent to false. No possible satisfaction
     ImpossibleSatisfaction,
     /// Bare descriptors don't have any addresses
@@ -476,15 +468,11 @@ const MAX_RECURSION_DEPTH: u32 = 402;
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Error::MiniscriptConstruction(ref e) => e.fmt(f),
-            Error::MiniscriptParse(ref e) => e.fmt(f),
             Error::AddrError(ref e) => fmt::Display::fmt(e, f),
             Error::AddrP2shError(ref e) => fmt::Display::fmt(e, f),
             Error::MissingSig(ref pk) => write!(f, "missing signature for key {:?}", pk),
             Error::CouldNotSatisfy => f.write_str("could not satisfy"),
-            Error::TypeCheck(ref e) => write!(f, "typecheck: {}", e),
             Error::Secp(ref e) => fmt::Display::fmt(e, f),
-            Error::TapTreeDepthError(ref e) => fmt::Display::fmt(e, f),
             Error::ImpossibleSatisfaction => write!(f, "Impossible to satisfy Miniscript"),
             Error::BareDescriptorAddr => write!(f, "Bare descriptors don't have address"),
             Error::TrNoScriptCode => write!(f, "No script code for Tr descriptors"),
@@ -503,36 +491,17 @@ impl std::error::Error for Error {
         match self {
             MissingSig(_)
             | CouldNotSatisfy
-            | TypeCheck(_)
             | ImpossibleSatisfaction
             | BareDescriptorAddr
             | TrNoScriptCode => None,
-            MiniscriptConstruction(e) => Some(e),
-            MiniscriptParse(e) => Some(e),
             AddrError(e) => Some(e),
             AddrP2shError(e) => Some(e),
             Secp(e) => Some(e),
-            TapTreeDepthError(e) => Some(e),
             Threshold(e) => Some(e),
             Parse(e) => Some(e),
             Validation(e) => Some(e),
         }
     }
-}
-
-#[doc(hidden)]
-impl From<miniscript::ConstructError> for Error {
-    fn from(e: miniscript::ConstructError) -> Error { Error::MiniscriptConstruction(e) }
-}
-
-#[doc(hidden)]
-impl From<miniscript::types::Error> for Error {
-    fn from(e: miniscript::types::Error) -> Error { Error::TypeCheck(e.to_string()) }
-}
-
-#[doc(hidden)]
-impl From<crate::descriptor::TapTreeDepthError> for Error {
-    fn from(e: crate::descriptor::TapTreeDepthError) -> Error { Error::TapTreeDepthError(e) }
 }
 
 #[doc(hidden)]
