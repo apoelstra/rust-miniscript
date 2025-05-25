@@ -73,3 +73,18 @@ required-features = ["compiler"]
 [workspace]
 members = ["fuzz"]
 exclude = ["embedded", "bitcoind-tests"]
+
+[lints.clippy]
+# This lint is unbelievably stupid and has multiple issues filed against it. On
+# Github the suggested fix https://github.com/rust-lang/rust-clippy/pull/11966
+# is to add a ton of line noise, something the lint authors are clearly so
+# embarassed by that the lint doesn't even suggest it. Also, the content of this
+# lint is "you are asserting on a constant". No shit. What do the lint authors
+# think an assertion is?
+assertions_on_constants = "allow"
+# This warn-by-default lint's description acknowledges that Clippy has no way
+# of knowing whether its complaint is applicable. The content of the lint is
+# literally "you might be wasting 200 bytes. Perhaps you want a heap allocation
+# instead?" Simply assinine.
+# https://rust-lang.github.io/rust-clippy/master/index.html#large_enum_variant
+large_enum_variant = "allow"

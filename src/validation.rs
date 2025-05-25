@@ -185,6 +185,9 @@ impl ValidationParams {
     pub const fn entails(&self, other: &Self) -> bool { self.intersect(other).eq(self) }
 
     /// Computes the intersection of two sets of validation parameters.
+    ///
+    /// The "intersection" is as restrictive as both of them. Alternately, it is the
+    /// least restrictive set of parameters which nonetheless entails both.
     pub const fn intersect(&self, other: &Self) -> Self {
         ValidationParams {
             allow_compressed_keys: self.allow_compressed_keys && other.allow_compressed_keys,
@@ -225,6 +228,57 @@ impl ValidationParams {
                 other.max_exec_stack_size
             },
             max_recursive_depth: if self.max_recursive_depth < other.max_recursive_depth {
+                self.max_recursive_depth
+            } else {
+                other.max_recursive_depth
+            },
+        }
+    }
+
+    /// Computes the union of two sets of validation parameters.
+    ///
+    /// The "union" is as non-restrictive as both of them. Alternately, it is the
+    /// most restrictive set of parameters which nonetheless is entailed by both.
+    pub const fn union(&self, other: &Self) -> Self {
+        ValidationParams {
+            allow_compressed_keys: self.allow_compressed_keys || other.allow_compressed_keys,
+            allow_duplicate_keys: self.allow_duplicate_keys || other.allow_duplicate_keys,
+            allow_dup_if: self.allow_dup_if || other.allow_dup_if,
+            allow_malleability: self.allow_malleability || other.allow_malleability,
+            allow_mixed_time_locks: self.allow_mixed_time_locks || other.allow_mixed_time_locks,
+            allow_multi: self.allow_multi || other.allow_multi,
+            allow_multi_a: self.allow_multi_a || other.allow_multi_a,
+            allow_or_i: self.allow_or_i || other.allow_or_i,
+            allow_raw_pkh: self.allow_raw_pkh || other.allow_raw_pkh,
+            allow_sigless_branch: self.allow_sigless_branch || other.allow_sigless_branch,
+            allow_non_b: self.allow_non_b || other.allow_non_b,
+            allow_uncompressed_keys: self.allow_uncompressed_keys || other.allow_uncompressed_keys,
+            allow_unsatisfiable: self.allow_unsatisfiable || other.allow_unsatisfiable,
+            allow_x_only_keys: self.allow_x_only_keys || other.allow_x_only_keys,
+            allow_inconsistent_multipath_keys: self.allow_inconsistent_multipath_keys
+                || other.allow_inconsistent_multipath_keys,
+            // cannot use cmp::max in const ctx
+            max_opcode_count: if self.max_opcode_count > other.max_opcode_count {
+                self.max_opcode_count
+            } else {
+                other.max_opcode_count
+            },
+            max_script_size: if self.max_script_size > other.max_script_size {
+                self.max_script_size
+            } else {
+                other.max_script_size
+            },
+            max_witness_items: if self.max_witness_items > other.max_witness_items {
+                self.max_witness_items
+            } else {
+                other.max_witness_items
+            },
+            max_exec_stack_size: if self.max_exec_stack_size > other.max_exec_stack_size {
+                self.max_exec_stack_size
+            } else {
+                other.max_exec_stack_size
+            },
+            max_recursive_depth: if self.max_recursive_depth > other.max_recursive_depth {
                 self.max_recursive_depth
             } else {
                 other.max_recursive_depth

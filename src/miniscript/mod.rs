@@ -73,6 +73,8 @@ mod private {
         pub ty: types::Type,
         /// Additional information helpful for extra analysis.
         pub ext: types::extra_props::ExtData,
+        /// The set of validation parameters that have been verified for this Miniscript node.
+        validated: ValidationParams,
         /// Context PhantomData. Only accessible inside this crate
         phantom: PhantomData<Ctx>,
     }
@@ -138,6 +140,7 @@ mod private {
                     node: new_term,
                     ty: item.node.ty,
                     ext: item.node.ext,
+                    validated: ValidationParams::MAX,
                     phantom: PhantomData,
                 }));
             }
@@ -153,6 +156,7 @@ mod private {
             node: Terminal::True,
             ty: types::Type::TRUE,
             ext: types::extra_props::ExtData::TRUE,
+            validated: ValidationParams::MAX,
             phantom: PhantomData,
         };
 
@@ -161,6 +165,7 @@ mod private {
             node: Terminal::False,
             ty: types::Type::FALSE,
             ext: types::extra_props::ExtData::FALSE,
+            validated: ValidationParams::MAX,
             phantom: PhantomData,
         };
 
@@ -171,6 +176,7 @@ mod private {
                 ty: types::Type::cast_check(inner.ty).unwrap(),
                 ext: types::extra_props::ExtData::cast_check(inner.ext),
                 node: Terminal::Check(inner),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -182,6 +188,7 @@ mod private {
                 ty: types::Type::cast_check(inner.ty).unwrap(),
                 ext: types::extra_props::ExtData::cast_check(inner.ext),
                 node: Terminal::Check(inner),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -192,6 +199,7 @@ mod private {
                 ext: types::extra_props::ExtData::pk_k::<_, Ctx>(&pk),
                 node: Terminal::PkK(pk),
                 ty: types::Type::pk_k(),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -202,6 +210,7 @@ mod private {
                 ext: types::extra_props::ExtData::pk_h::<_, Ctx>(Some(&pk)),
                 node: Terminal::PkH(pk),
                 ty: types::Type::pk_h(),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -212,6 +221,7 @@ mod private {
                 node: Terminal::RawPkH(hash),
                 ty: types::Type::pk_h(),
                 ext: types::extra_props::ExtData::pk_h::<Pk, Ctx>(None),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -222,6 +232,7 @@ mod private {
                 node: Terminal::After(time),
                 ty: types::Type::time(),
                 ext: types::extra_props::ExtData::after(time),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -232,6 +243,7 @@ mod private {
                 node: Terminal::Older(time),
                 ty: types::Type::time(),
                 ext: types::extra_props::ExtData::older(time),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -242,6 +254,7 @@ mod private {
                 node: Terminal::Sha256(hash),
                 ty: types::Type::hash(),
                 ext: types::extra_props::ExtData::sha256(),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -252,6 +265,7 @@ mod private {
                 node: Terminal::Hash256(hash),
                 ty: types::Type::hash(),
                 ext: types::extra_props::ExtData::hash256(),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -262,6 +276,7 @@ mod private {
                 node: Terminal::Ripemd160(hash),
                 ty: types::Type::hash(),
                 ext: types::extra_props::ExtData::ripemd160(),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -272,6 +287,7 @@ mod private {
                 node: Terminal::Hash160(hash),
                 ty: types::Type::hash(),
                 ext: types::extra_props::ExtData::hash160(),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -283,6 +299,7 @@ mod private {
                 ty: types::Type::multi(),
                 ext: types::extra_props::ExtData::multi(&thresh),
                 node: Terminal::Multi(thresh),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -294,6 +311,7 @@ mod private {
                 ty: types::Type::multi_a(),
                 ext: types::extra_props::ExtData::multi_a(&thresh),
                 node: Terminal::MultiA(thresh),
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
         }
@@ -310,6 +328,7 @@ mod private {
                     .map_err(|e| WithSpan::new(e).with_string(t.to_string()))?,
                 ext: ExtData::type_check(&t),
                 node: t,
+                validated: ValidationParams::MAX,
                 phantom: PhantomData,
             };
             res.validate_non_top_level(&ValidationParams { allow_raw_pkh: true, ..Ctx::CONSENSUS })
@@ -328,7 +347,7 @@ mod private {
             ty: types::Type,
             ext: types::extra_props::ExtData,
         ) -> Miniscript<Pk, Ctx> {
-            Miniscript { node, ty, ext, phantom: PhantomData }
+            Miniscript { node, ty, ext, validated: ValidationParams::MAX, phantom: PhantomData }
         }
 
         /// Validates whether a given fragment meets the given set of
@@ -391,6 +410,8 @@ mod private {
             &self,
             params: &ValidationParams,
         ) -> Result<(), ValidationError> {
+            use crate::iter::{Tree, TreeLike};
+
             if self.ext.tree_height > params.max_recursive_depth {
                 return Err(ValidationError::MaxRecursiveDepthExceeded {
                     limit: params.max_recursive_depth,
@@ -405,12 +426,52 @@ mod private {
                 }
             }
 
-            for ms in self.iter() {
+            let mut stack = vec![self];
+            while let Some(ms) = stack.pop() {
+                // Set of checks that we do recursively. If we find that the children of a node
+                // already have validated these checks, we don't bother recursing into them.
+                //
+                // The other checks are already non-recursive, typically because they just involve
+                // checking some property of self.ty.ext. So there's no value in caching them.
+                const RECURSIVE_CHECKS: ValidationParams = ValidationParams {
+                    allow_compressed_keys: false,
+                    allow_uncompressed_keys: false,
+                    allow_x_only_keys: false,
+                    allow_dup_if: false,
+                    allow_multi: false,
+                    allow_multi_a: false,
+                    allow_or_i: false,
+                    allow_raw_pkh: false,
+                    ..ValidationParams::MAX
+                };
+                // These three checks are hidden inside `ValidationParams::validate_pk`.
+                // In the below code we try to make sure that every recursive check is
+                // combined with a debug_assert that the relevant check is included in
+                // RECURSIVE_CHECKs, but for these there isn't a natural place to put
+                // the debug_assert!s.
+                //
+                // The point of this convention is that if we add new recursive checks,
+                // we will hopefully remember to add them to RECURSIVE_CHECKS. If we
+                // forget, we may skip the checks incorrectly.
+                debug_assert!(!RECURSIVE_CHECKS.allow_compressed_keys);
+                debug_assert!(!RECURSIVE_CHECKS.allow_uncompressed_keys);
+                debug_assert!(!RECURSIVE_CHECKS.allow_x_only_keys);
+
+                let mut push_if_needed = |ms| {
+                    let _ = stack.last() == Some(&ms); // FIXME this dead code is to force Rust type inference
+                    if ms.validated.union(&RECURSIVE_CHECKS) == ms.validated {
+                        stack.push(ms);
+                    }
+                };
+
+                // First, do validation on this node.
                 match ms.node {
                     Terminal::DupIf(..) if !params.allow_dup_if => {
-                        return Err(ValidationError::IllegalDupIf)
+                        debug_assert!(!RECURSIVE_CHECKS.allow_dup_if);
+                        return Err(ValidationError::IllegalDupIf);
                     }
                     Terminal::Multi(ref thresh) => {
+                        debug_assert!(!RECURSIVE_CHECKS.allow_multi);
                         if !params.allow_multi {
                             return Err(ValidationError::IllegalMulti);
                         }
@@ -419,6 +480,7 @@ mod private {
                         }
                     }
                     Terminal::MultiA(ref thresh) => {
+                        debug_assert!(!RECURSIVE_CHECKS.allow_multi_a);
                         if !params.allow_multi_a {
                             return Err(ValidationError::IllegalMultiA);
                         }
@@ -427,15 +489,36 @@ mod private {
                         }
                     }
                     Terminal::OrI(..) if !params.allow_or_i => {
-                        return Err(ValidationError::IllegalOrI)
+                        debug_assert!(!RECURSIVE_CHECKS.allow_or_i);
+                        return Err(ValidationError::IllegalOrI);
                     }
                     Terminal::RawPkH(..) if !params.allow_raw_pkh => {
-                        return Err(ValidationError::IllegalRawPkh)
+                        debug_assert!(!RECURSIVE_CHECKS.allow_raw_pkh);
+                        return Err(ValidationError::IllegalRawPkh);
                     }
                     Terminal::PkK(ref pk) | Terminal::PkH(ref pk) => {
                         params.validate_pk(pk)?;
                     }
                     _ => {}
+                }
+                // Then push its children onto the stack.
+                match TreeLike::as_node(&ms) {
+                    Tree::Nullary => {}
+                    Tree::Unary(sub) => push_if_needed(sub),
+                    Tree::Binary(a, b) => {
+                        push_if_needed(b);
+                        push_if_needed(a);
+                    }
+                    Tree::Ternary(a, b, c) => {
+                        push_if_needed(c);
+                        push_if_needed(b);
+                        push_if_needed(a);
+                    }
+                    Tree::Nary(children) => {
+                        for child in children.iter() {
+                            push_if_needed(child);
+                        }
+                    }
                 }
             }
 
