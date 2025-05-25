@@ -15,8 +15,9 @@ use crate::policy::Liftable;
 use crate::prelude::*;
 use crate::util::{varint_len, witness_size};
 use crate::{
-    expression, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, ParseError, Satisfier,
-    ScriptContext as _, Tap, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
+    expression, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, ParseMiniscriptError,
+    Satisfier, ScriptContext as _, Tap, Threshold, ToPublicKey, TranslateErr, Translator,
+    ValidationError,
 };
 
 mod spend_info;
@@ -335,32 +336,29 @@ impl Tr<DefiniteDescriptorKey> {
 }
 
 impl<Pk: FromStrKey> core::str::FromStr for Tr<Pk> {
-    type Err = Error;
+    type Err = ParseMiniscriptError;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let expr_tree = expression::Tree::from_str(s).map_err(Error::Parse)?;
+        let expr_tree = expression::Tree::from_str(s)?;
         Self::from_tree(expr_tree.root())
     }
 }
 
 impl<Pk: FromStrKey> Tr<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
+    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError> {
         use crate::expression::{Parens, ParseTreeError};
 
-        root.verify_toplevel("tr", 1..=2)
-            .map_err(From::from)
-            .map_err(Error::Parse)?;
+        root.verify_toplevel("tr", 1..=2)?;
 
         let mut root_children = root.children();
         let internal_key: Pk = root_children
             .next()
             .unwrap() // `verify_toplevel` above checked that first child existed
-            .verify_terminal("internal key")
-            .map_err(Error::Parse)?;
+            .verify_terminal("internal key")?;
 
         let tap_tree = match root_children.next() {
-            None => return Tr::new(internal_key, None).map_err(Error::Validation),
+            None => return Ok(Tr::new(internal_key, None)?),
             Some(tree) => tree,
         };
 
@@ -371,27 +369,24 @@ impl<Pk: FromStrKey> Tr<Pk> {
         while let Some(node) = tap_tree_iter.next() {
             if node.parens() == Parens::Curly {
                 if !node.name().is_empty() {
-                    return Err(Error::Parse(ParseError::Tree(ParseTreeError::IncorrectName {
+                    return Err(ParseTreeError::IncorrectName {
                         actual: node.name().to_owned(),
                         expected: "",
-                    })));
+                    }
+                    .into());
                 }
-                node.verify_n_children("taptree branch", 2..=2)
-                    .map_err(From::from)
-                    .map_err(Error::Parse)?;
+                node.verify_n_children("taptree branch", 2..=2)?;
                 tree_builder.push_inner_node()?;
             } else {
-                let script = Miniscript::from_tree(node).map_err(Error::MiniscriptParse)?;
+                let script = Miniscript::from_tree(node)?;
                 // FIXME hack for https://github.com/rust-bitcoin/rust-miniscript/issues/734
-                script
-                    .validate(&Tap::CONSENSUS)
-                    .map_err(Error::Validation)?;
+                script.validate(&Tap::CONSENSUS)?;
 
                 tree_builder.push_leaf(script);
                 tap_tree_iter.skip_descendants();
             }
         }
-        Tr::new(internal_key, Some(tree_builder.finalize())).map_err(Error::Validation)
+        Ok(Tr::new(internal_key, Some(tree_builder.finalize()))?)
     }
 }
 
@@ -555,7 +550,7 @@ mod tests {
             descriptor129
                 .parse::<crate::Descriptor::<String>>()
                 .unwrap_err(),
-            crate::Error::TapTreeDepthError(TapTreeDepthError),
+            ParseMiniscriptError::TapTreeDepthError(TapTreeDepthError),
         ));
     }
 }

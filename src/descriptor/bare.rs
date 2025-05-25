@@ -20,8 +20,8 @@ use crate::policy::{semantic, Liftable};
 use crate::prelude::*;
 use crate::util::{varint_len, witness_to_scriptsig};
 use crate::{
-    expression, BareCtx, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, Satisfier,
-    ToPublicKey, TranslateErr, Translator, ValidationError,
+    expression, BareCtx, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey,
+    ParseMiniscriptError, Satisfier, ToPublicKey, TranslateErr, Translator, ValidationError,
 };
 
 /// Create a Bare Descriptor. That is descriptor that is
@@ -168,16 +168,16 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Bare<Pk> {
 
 impl<Pk: FromStrKey> Bare<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
-        let sub = Miniscript::<Pk, BareCtx>::from_tree(root).map_err(Error::MiniscriptParse)?;
-        Bare::new(sub).map_err(Error::Validation)
+    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError> {
+        let sub = Miniscript::<Pk, BareCtx>::from_tree(root)?;
+        Ok(Bare::new(sub)?)
     }
 }
 
 impl<Pk: FromStrKey> core::str::FromStr for Bare<Pk> {
-    type Err = Error;
+    type Err = ParseMiniscriptError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let top = expression::Tree::from_str(s).map_err(Error::Parse)?;
+        let top = expression::Tree::from_str(s)?;
         Self::from_tree(top.root())
     }
 }
@@ -361,18 +361,16 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Pkh<Pk> {
 
 impl<Pk: FromStrKey> Pkh<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
-        let pk = root
-            .verify_terminal_parent("pkh", "public key")
-            .map_err(Error::Parse)?;
-        Pkh::new(pk).map_err(Error::Validation)
+    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError> {
+        let pk = root.verify_terminal_parent("pkh", "public key")?;
+        Ok(Pkh::new(pk)?)
     }
 }
 
 impl<Pk: FromStrKey> core::str::FromStr for Pkh<Pk> {
-    type Err = Error;
+    type Err = ParseMiniscriptError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let top = expression::Tree::from_str(s).map_err(Error::Parse)?;
+        let top = expression::Tree::from_str(s)?;
         Self::from_tree(top.root())
     }
 }

@@ -28,7 +28,8 @@ use crate::plan::{AssetProvider, Plan};
 use crate::prelude::*;
 use crate::{
     expression, hash256, BareCtx, Error, ForEachKey, FromStrKey, MiniscriptKey, ParseError,
-    Satisfier, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
+    ParseMiniscriptError, Satisfier, Threshold, ToPublicKey, TranslateErr, Translator,
+    ValidationError,
 };
 
 mod bare;
@@ -703,24 +704,24 @@ impl Descriptor<DescriptorPublicKey> {
     pub fn parse_descriptor<C: secp256k1::Signing>(
         secp: &secp256k1::Secp256k1<C>,
         s: &str,
-    ) -> Result<(Descriptor<DescriptorPublicKey>, KeyMap), Error> {
+    ) -> Result<(Descriptor<DescriptorPublicKey>, KeyMap), ParseMiniscriptError> {
         fn parse_key<C: secp256k1::Signing>(
             s: &str,
             key_map: &mut KeyMap,
             secp: &secp256k1::Secp256k1<C>,
-        ) -> Result<DescriptorPublicKey, Error> {
+        ) -> Result<DescriptorPublicKey, ParseMiniscriptError> {
             match DescriptorSecretKey::from_str(s) {
                 Ok(sk) => {
                     let pk = key_map
                         .insert(secp, sk)
-                        .map_err(|e| Error::Parse(ParseError::box_from_str(e)))?;
+                        .map_err(ParseError::box_from_str)?;
                     Ok(pk)
                 }
                 Err(_) => {
                     // try to parse as a public key if parsing as a secret key failed
                     let pk = s
                         .parse()
-                        .map_err(|e| Error::Parse(ParseError::box_from_str(e)))?;
+                        .map_err(ParseError::box_from_str)?;
                     Ok(pk)
                 }
             }
@@ -732,34 +733,26 @@ impl Descriptor<DescriptorPublicKey> {
 
         impl<C: secp256k1::Signing> Translator<String> for KeyMapWrapper<'_, C> {
             type TargetPk = DescriptorPublicKey;
-            type Error = Error;
+            type Error = ParseMiniscriptError;
 
-            fn pk(&mut self, pk: &String) -> Result<DescriptorPublicKey, Error> {
+            fn pk(&mut self, pk: &String) -> Result<Self::TargetPk, Self::Error> {
                 parse_key(pk, &mut self.0, self.1)
             }
 
-            fn sha256(&mut self, sha256: &String) -> Result<sha256::Hash, Error> {
-                sha256
-                    .parse()
-                    .map_err(|e| Error::Parse(ParseError::box_from_str(e)))
+            fn sha256(&mut self, sha256: &String) -> Result<sha256::Hash, Self::Error> {
+                Ok(sha256.parse().map_err(ParseError::box_from_str)?)
             }
 
-            fn hash256(&mut self, hash256: &String) -> Result<hash256::Hash, Error> {
-                hash256
-                    .parse()
-                    .map_err(|e| Error::Parse(ParseError::box_from_str(e)))
+            fn hash256(&mut self, hash256: &String) -> Result<hash256::Hash, Self::Error> {
+                Ok(hash256.parse().map_err(ParseError::box_from_str)?)
             }
 
-            fn ripemd160(&mut self, ripemd160: &String) -> Result<ripemd160::Hash, Error> {
-                ripemd160
-                    .parse()
-                    .map_err(|e| Error::Parse(ParseError::box_from_str(e)))
+            fn ripemd160(&mut self, ripemd160: &String) -> Result<ripemd160::Hash, Self::Error> {
+                Ok(ripemd160.parse().map_err(ParseError::box_from_str)?)
             }
 
-            fn hash160(&mut self, hash160: &String) -> Result<hash160::Hash, Error> {
-                hash160
-                    .parse()
-                    .map_err(|e| Error::Parse(ParseError::box_from_str(e)))
+            fn hash160(&mut self, hash160: &String) -> Result<hash160::Hash, Self::Error> {
+                Ok(hash160.parse().map_err(ParseError::box_from_str)?)
             }
         }
 
@@ -768,7 +761,7 @@ impl Descriptor<DescriptorPublicKey> {
             .translate_pk(&mut keymap_pk)
             .map_err(|err| match err {
                 TranslateErr::TranslatorErr(e) => e,
-                TranslateErr::OuterError(e) => Error::Validation(e),
+                TranslateErr::OuterError(e) => e.into(),
             })?;
 
         Ok((descriptor, keymap_pk.0))
@@ -1019,7 +1012,9 @@ impl Descriptor<DefiniteDescriptorKey> {
 
 impl<Pk: FromStrKey> Descriptor<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(top: expression::TreeIterItem) -> Result<Descriptor<Pk>, Error> {
+    pub fn from_tree(
+        top: expression::TreeIterItem,
+    ) -> Result<Descriptor<Pk>, ParseMiniscriptError> {
         Ok(match (top.name(), top.n_children()) {
             ("pkh", 1) => Descriptor::Pkh(Pkh::from_tree(top)?),
             ("wpkh", 1) => Descriptor::Wpkh(Wpkh::from_tree(top)?),
@@ -1032,15 +1027,13 @@ impl<Pk: FromStrKey> Descriptor<Pk> {
 }
 
 impl<Pk: FromStrKey> FromStr for Descriptor<Pk> {
-    type Err = Error;
-    fn from_str(s: &str) -> Result<Descriptor<Pk>, Error> {
-        let top = expression::Tree::from_str(s).map_err(Error::Parse)?;
+    type Err = ParseMiniscriptError;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        let top = expression::Tree::from_str(s)?;
         let ret = Self::from_tree(top.root())?;
         if let Descriptor::Tr(ref inner) = ret {
             for item in inner.leaves() {
-                item.miniscript()
-                    .validate(&Tap::SANE)
-                    .map_err(Error::Validation)?;
+                item.miniscript().validate(&Tap::SANE)?;
             }
         }
         Ok(ret)
@@ -1613,7 +1606,7 @@ mod tests {
             StdDescriptor::from_str(
                 "tr(0202d44008000010100000000084F0000000dd0dd00000000000201dceddd00d00,abc{0,0})"
             ),
-            Err(Error::Parse(ParseError::Tree(ParseTreeError::IncorrectName {
+            Err(ParseMiniscriptError::Parse(ParseError::Tree(ParseTreeError::IncorrectName {
                 expected: "",
                 ..
             }))),
@@ -1912,7 +1905,7 @@ mod tests {
                 use crate::{ParseError, ParseTreeError};
                 $(
                     match Descriptor::parse_descriptor($secp, $desc) {
-                        Err(Error::Parse(ParseError::Tree(ParseTreeError::Checksum(_)))) => {},
+                        Err(ParseMiniscriptError::Parse(ParseError::Tree(ParseTreeError::Checksum(_)))) => {},
                         Err(e) => panic!("Expected bad checksum for {}, got '{}'", $desc, e),
                         _ => panic!("Invalid checksum treated as valid: {}", $desc),
                     };

@@ -19,8 +19,9 @@ use crate::plan::AssetProvider;
 use crate::prelude::*;
 use crate::sync::Arc;
 use crate::{
-    expression, policy, script_num_size, Error, ForEachKey, Miniscript, MiniscriptKey, Satisfier,
-    Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
+    expression, policy, script_num_size, Error, ForEachKey, Miniscript, MiniscriptKey,
+    ParseMiniscriptError, Satisfier, Threshold, ToPublicKey, TranslateErr, Translator,
+    ValidationError,
 };
 
 /// Contents of a "sortedmulti" descriptor
@@ -55,20 +56,17 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
     }
 
     /// Parse an expression tree into a SortedMultiVec
-    pub fn from_tree(tree: expression::TreeIterItem) -> Result<Self, Error>
+    pub fn from_tree(tree: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError>
     where
         Pk: FromStrKey,
     {
-        tree.verify_toplevel("sortedmulti", 1..)
-            .map_err(From::from)
-            .map_err(Error::Parse)?;
+        tree.verify_toplevel("sortedmulti", 1..)?;
 
         let ret = Self {
-            inner: tree
-                .verify_threshold(|sub| sub.verify_terminal("public_key").map_err(Error::Parse))?,
+            inner: tree.verify_threshold(|sub| sub.verify_terminal("public_key"))?,
             phantom: PhantomData,
         };
-        ret.constructor_check().map_err(Error::Validation)
+        Ok(ret.constructor_check()?)
     }
 
     /// This will panic if fpk returns an uncompressed key when

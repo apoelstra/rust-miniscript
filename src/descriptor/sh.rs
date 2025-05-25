@@ -24,7 +24,8 @@ use crate::prelude::*;
 use crate::util::{varint_len, witness_to_scriptsig};
 use crate::{
     expression, push_opcode_size, Error, ForEachKey, FromStrKey, Legacy, Miniscript, MiniscriptKey,
-    Satisfier, Segwitv0, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
+    ParseMiniscriptError, Satisfier, Segwitv0, Threshold, ToPublicKey, TranslateErr, Translator,
+    ValidationError,
 };
 
 /// A Legacy p2sh Descriptor
@@ -82,19 +83,16 @@ impl<Pk: MiniscriptKey> fmt::Display for Sh<Pk> {
 
 impl<Pk: FromStrKey> Sh<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(top: expression::TreeIterItem) -> Result<Self, Error> {
-        let top = top
-            .verify_toplevel("sh", 1..=1)
-            .map_err(From::from)
-            .map_err(Error::Parse)?;
+    pub fn from_tree(top: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError> {
+        let top = top.verify_toplevel("sh", 1..=1)?;
 
         let inner = match top.name() {
             "wsh" => ShInner::Wsh(Wsh::from_tree(top)?),
             "wpkh" => ShInner::Wpkh(Wpkh::from_tree(top)?),
             "sortedmulti" => ShInner::SortedMulti(SortedMultiVec::from_tree(top)?),
             _ => {
-                let sub = Miniscript::from_tree(top).map_err(Error::MiniscriptParse)?;
-                sub.validate(&Legacy::SANE).map_err(Error::Validation)?;
+                let sub = Miniscript::from_tree(top)?;
+                sub.validate(&Legacy::SANE)?;
                 ShInner::Ms(sub)
             }
         };
@@ -103,9 +101,9 @@ impl<Pk: FromStrKey> Sh<Pk> {
 }
 
 impl<Pk: FromStrKey> core::str::FromStr for Sh<Pk> {
-    type Err = Error;
+    type Err = ParseMiniscriptError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let top = expression::Tree::from_str(s).map_err(Error::Parse)?;
+        let top = expression::Tree::from_str(s)?;
         Self::from_tree(top.root())
     }
 }

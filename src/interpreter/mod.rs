@@ -439,7 +439,9 @@ impl<'txin> Interpreter<'txin> {
     /// since it cannot distinguish between sorted and unsorted multisigs (and anyway
     /// it can only see the final keys, keyorigin info is lost in serializing to Bitcoin).
     /// x-only keys are translated to [`bitcoin::PublicKey`] with 0x02 prefix.
-    pub fn inferred_descriptor(&self) -> Result<Descriptor<bitcoin::PublicKey>, crate::Error> {
+    pub fn inferred_descriptor(
+        &self,
+    ) -> Result<Descriptor<bitcoin::PublicKey>, crate::ParseMiniscriptError> {
         Descriptor::from_str(&self.inferred_descriptor_string())
     }
 }

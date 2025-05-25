@@ -20,8 +20,8 @@ use crate::policy::{semantic, Liftable};
 use crate::prelude::*;
 use crate::util::varint_len;
 use crate::{
-    expression, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, Satisfier, Segwitv0,
-    Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
+    expression, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, ParseMiniscriptError,
+    Satisfier, Segwitv0, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
 };
 /// A Segwitv0 wsh descriptor
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -240,17 +240,14 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Wsh<Pk> {
 
 impl<Pk: FromStrKey> Wsh<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(top: expression::TreeIterItem) -> Result<Self, Error> {
-        let top = top
-            .verify_toplevel("wsh", 1..=1)
-            .map_err(From::from)
-            .map_err(Error::Parse)?;
+    pub fn from_tree(top: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError> {
+        let top = top.verify_toplevel("wsh", 1..=1)?;
 
         if top.name() == "sortedmulti" {
             return Ok(Wsh { inner: WshInner::SortedMulti(SortedMultiVec::from_tree(top)?) });
         }
-        let sub = Miniscript::from_tree(top).map_err(Error::MiniscriptParse)?;
-        sub.validate(&Segwitv0::SANE).map_err(Error::Validation)?;
+        let sub = Miniscript::from_tree(top)?;
+        sub.validate(&Segwitv0::SANE)?;
         Ok(Wsh { inner: WshInner::Ms(sub) })
     }
 }
@@ -274,9 +271,9 @@ impl<Pk: MiniscriptKey> fmt::Display for Wsh<Pk> {
 }
 
 impl<Pk: FromStrKey> core::str::FromStr for Wsh<Pk> {
-    type Err = Error;
+    type Err = ParseMiniscriptError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let top = expression::Tree::from_str(s).map_err(Error::Parse)?;
+        let top = expression::Tree::from_str(s)?;
         Wsh::<Pk>::from_tree(top.root())
     }
 }
@@ -467,18 +464,16 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Wpkh<Pk> {
 
 impl<Pk: FromStrKey> Wpkh<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(top: expression::TreeIterItem) -> Result<Self, Error> {
-        let pk = top
-            .verify_terminal_parent("wpkh", "public key")
-            .map_err(Error::Parse)?;
-        Wpkh::new(pk).map_err(Error::Validation)
+    pub fn from_tree(top: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError> {
+        let pk = top.verify_terminal_parent("wpkh", "public key")?;
+        Ok(Wpkh::new(pk)?)
     }
 }
 
 impl<Pk: FromStrKey> core::str::FromStr for Wpkh<Pk> {
-    type Err = Error;
+    type Err = ParseMiniscriptError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let top = expression::Tree::from_str(s).map_err(Error::Parse)?;
+        let top = expression::Tree::from_str(s)?;
         Self::from_tree(top.root())
     }
 }
