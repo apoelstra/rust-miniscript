@@ -21,6 +21,20 @@ use crate::prelude::*;
 use crate::util::witness_size;
 use crate::{AbsLockTime, Miniscript, MiniscriptKey, RelLockTime, ScriptContext, ToPublicKey};
 
+/// No satisfaction exists for a Miniscript fragment; it is equivalent to `OP_FALSE`.
+#[derive(Debug, PartialEq, Eq)]
+#[non_exhaustive]
+pub struct SatisfactionImpossibleError;
+
+impl fmt::Display for SatisfactionImpossibleError {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        f.write_str("no satisfaction exists (equivalent to OP_FALSE)")
+    }
+}
+
+#[cfg(feature = "std")]
+impl std::error::Error for SatisfactionImpossibleError {}
+
 /// Type alias for 32 byte Preimage.
 pub type Preimage32 = [u8; 32];
 /// Trait describing a lookup table for signatures, hash preimages, etc.

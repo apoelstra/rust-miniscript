@@ -147,7 +147,7 @@ impl<Pk: MiniscriptKey> Tr<Pk> {
     ///
     /// # Errors
     /// When the descriptor is impossible to safisfy (ex: sh(OP_FALSE)).
-    pub fn max_weight_to_satisfy(&self) -> Result<Weight, Error> {
+    pub fn max_weight_to_satisfy(&self) -> Result<Weight, crate::SatisfactionImpossibleError> {
         let tree = match self.tap_tree() {
             None => {
                 // key spend path
@@ -186,7 +186,7 @@ impl<Pk: MiniscriptKey> Tr<Pk> {
                 )
             })
             .max()
-            .ok_or(Error::ImpossibleSatisfaction)?;
+            .ok_or(crate::SatisfactionImpossibleError)?;
 
         Ok(Weight::from_wu(wu as u64))
     }

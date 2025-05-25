@@ -369,7 +369,7 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
     ///
     /// # Errors
     /// When the descriptor is impossible to safisfy (ex: sh(OP_FALSE)).
-    pub fn max_weight_to_satisfy(&self) -> Result<Weight, Error> {
+    pub fn max_weight_to_satisfy(&self) -> Result<Weight, crate::SatisfactionImpossibleError> {
         let weight = match *self {
             Descriptor::Bare(ref bare) => bare.max_weight_to_satisfy()?,
             Descriptor::Pkh(ref pkh) => pkh.max_weight_to_satisfy(),

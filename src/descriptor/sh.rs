@@ -170,7 +170,7 @@ impl<Pk: MiniscriptKey> Sh<Pk> {
     ///
     /// # Errors
     /// When the descriptor is impossible to safisfy (ex: sh(OP_FALSE)).
-    pub fn max_weight_to_satisfy(&self) -> Result<Weight, Error> {
+    pub fn max_weight_to_satisfy(&self) -> Result<Weight, crate::SatisfactionImpossibleError> {
         let (scriptsig_size, witness_size) = match self.inner {
             // add weighted script sig, len byte stays the same
             ShInner::Wsh(ref wsh) => {
@@ -206,7 +206,7 @@ impl<Pk: MiniscriptKey> Sh<Pk> {
         let wu = Weight::from_vb((scriptsig_varint_diff + scriptsig_size) as u64);
         match wu {
             Some(w) => Ok(w + witness_size),
-            None => Err(Error::CouldNotSatisfy),
+            None => Err(crate::SatisfactionImpossibleError),
         }
     }
 

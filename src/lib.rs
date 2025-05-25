@@ -135,7 +135,7 @@ pub use crate::expression::{ParseNumError, ParseThresholdError, ParseTreeError};
 pub use crate::interpreter::Interpreter;
 pub use crate::miniscript::context::{BareCtx, Legacy, ScriptContext, Segwitv0, SigType, Tap};
 pub use crate::miniscript::decode::Terminal;
-pub use crate::miniscript::satisfy::{Preimage32, Satisfier};
+pub use crate::miniscript::satisfy::{Preimage32, SatisfactionImpossibleError, Satisfier};
 pub use crate::miniscript::{hash256, Miniscript, ParseMiniscriptError};
 use crate::prelude::*;
 pub use crate::primitives::absolute_locktime::{AbsLockTime, AbsLockTimeError};
@@ -443,8 +443,6 @@ pub enum Error {
     CouldNotSatisfy,
     /// Forward-secp related errors
     Secp(bitcoin::secp256k1::Error),
-    /// Miniscript is equivalent to false. No possible satisfaction
-    ImpossibleSatisfaction,
     /// Bare descriptors don't have any addresses
     BareDescriptorAddr,
     /// No script code for Tr descriptors
@@ -473,7 +471,6 @@ impl fmt::Display for Error {
             Error::MissingSig(ref pk) => write!(f, "missing signature for key {:?}", pk),
             Error::CouldNotSatisfy => f.write_str("could not satisfy"),
             Error::Secp(ref e) => fmt::Display::fmt(e, f),
-            Error::ImpossibleSatisfaction => write!(f, "Impossible to satisfy Miniscript"),
             Error::BareDescriptorAddr => write!(f, "Bare descriptors don't have address"),
             Error::TrNoScriptCode => write!(f, "No script code for Tr descriptors"),
             Error::Threshold(ref e) => e.fmt(f),
@@ -489,11 +486,7 @@ impl std::error::Error for Error {
         use self::Error::*;
 
         match self {
-            MissingSig(_)
-            | CouldNotSatisfy
-            | ImpossibleSatisfaction
-            | BareDescriptorAddr
-            | TrNoScriptCode => None,
+            MissingSig(_) | CouldNotSatisfy | BareDescriptorAddr | TrNoScriptCode => None,
             AddrError(e) => Some(e),
             AddrP2shError(e) => Some(e),
             Secp(e) => Some(e),

@@ -58,12 +58,12 @@ impl<Pk: MiniscriptKey> Bare<Pk> {
     ///
     /// # Errors
     /// When the descriptor is impossible to safisfy (ex: sh(OP_FALSE)).
-    pub fn max_weight_to_satisfy(&self) -> Result<Weight, Error> {
+    pub fn max_weight_to_satisfy(&self) -> Result<Weight, crate::SatisfactionImpossibleError> {
         let scriptsig_size = self.ms.max_satisfaction_size()?;
         // scriptSig varint difference between non-satisfied (0) and satisfied
         let scriptsig_varint_diff = varint_len(scriptsig_size) - varint_len(0);
         Weight::from_vb((scriptsig_varint_diff + scriptsig_size) as u64)
-            .ok_or(Error::CouldNotSatisfy)
+            .ok_or(crate::SatisfactionImpossibleError)
     }
 
     /// Converts the keys in the script from one type to another.

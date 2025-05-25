@@ -64,7 +64,7 @@ impl<Pk: MiniscriptKey> Wsh<Pk> {
     ///
     /// # Errors
     /// When the descriptor is impossible to safisfy (ex: sh(OP_FALSE)).
-    pub fn max_weight_to_satisfy(&self) -> Result<Weight, Error> {
+    pub fn max_weight_to_satisfy(&self) -> Result<Weight, crate::SatisfactionImpossibleError> {
         let (redeem_script_size, max_sat_elems, max_sat_size) = match self.inner {
             WshInner::SortedMulti(ref smv) => (
                 smv.script_size(),

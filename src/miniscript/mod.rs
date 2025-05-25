@@ -559,11 +559,13 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     ///
     /// This function may returns Error when the Miniscript is
     /// impossible to satisfy
-    pub fn max_satisfaction_witness_elements(&self) -> Result<usize, Error> {
+    pub fn max_satisfaction_witness_elements(
+        &self,
+    ) -> Result<usize, crate::SatisfactionImpossibleError> {
         self.ext
             .sat_data
             .map(|data| data.max_witness_stack_count + 1)
-            .ok_or(Error::ImpossibleSatisfaction)
+            .ok_or(crate::SatisfactionImpossibleError)
     }
 
     /// Maximum size, in bytes, of a satisfying witness. For Segwit outputs
@@ -578,8 +580,8 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     /// All signatures are assumed to be 73 bytes in size, including the
     /// length prefix (segwit) or push opcode (pre-segwit) and sighash
     /// postfix.
-    pub fn max_satisfaction_size(&self) -> Result<usize, Error> {
-        Ctx::max_satisfaction_size(self).ok_or(Error::ImpossibleSatisfaction)
+    pub fn max_satisfaction_size(&self) -> Result<usize, crate::SatisfactionImpossibleError> {
+        Ctx::max_satisfaction_size(self).ok_or(crate::SatisfactionImpossibleError)
     }
 
     /// Helper function to produce Taproot leaf hashes
