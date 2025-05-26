@@ -355,6 +355,22 @@ mod private {
                 return Err(ValidationError::Unsatisfiable);
             }
 
+            // Check for duplicate keys. This makes sense as a non-toplevel check, but it
+            // is hard to do efficiently (either you do n^2 work doing a dupe check after
+            // every node is added to the tree, or you maintain some sort of mutable hashset
+            // cache alongside the tree, which is hard to do efficiently while we are using
+            // recursive data structures.
+            //
+            // We may revisit this after eliminating recursion in the `Miniscript` type,
+            // because at that point we can have a list of internal nodes and a set of keys.
+            //
+            // Users are not typically working with half-constructed Miniscripts so the
+            // difference between "toplevel" and "non-toplevel" checks isn't that visible
+            // anyway.
+            if !params.allow_duplicate_keys && self.has_repeated_keys() {
+                return Err(ValidationError::DuplicateKeys);
+            }
+
             // All checks passed.
             Ok(())
         }
@@ -372,9 +388,6 @@ mod private {
                 return Err(ValidationError::MaxRecursiveDepthExceeded {
                     limit: params.max_recursive_depth,
                 });
-            }
-            if !params.allow_duplicate_keys && self.has_repeated_keys() {
-                return Err(ValidationError::DuplicateKeys);
             }
             if !params.allow_mixed_time_locks && self.has_mixed_timelocks() {
                 return Err(ValidationError::MixedTimeLocks);
