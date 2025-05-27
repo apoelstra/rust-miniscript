@@ -290,7 +290,7 @@ mod private {
         pub fn multi_a(thresh: crate::Threshold<Pk, MAX_PUBKEYS_IN_CHECKSIGADD>) -> Self {
             Self {
                 ty: types::Type::multi_a(),
-                ext: types::extra_props::ExtData::multi_a(thresh.k(), thresh.n()),
+                ext: types::extra_props::ExtData::multi_a(&thresh),
                 node: Terminal::MultiA(thresh),
                 phantom: PhantomData,
             }

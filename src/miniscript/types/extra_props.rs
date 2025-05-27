@@ -7,7 +7,7 @@ use core::cmp;
 use core::iter::once;
 
 use super::ScriptContext;
-use crate::miniscript::limits::MAX_PUBKEYS_PER_MULTISIG;
+use crate::miniscript::limits::{MAX_PUBKEYS_IN_CHECKSIGADD, MAX_PUBKEYS_PER_MULTISIG};
 use crate::prelude::*;
 use crate::{script_num_size, AbsLockTime, MiniscriptKey, RelLockTime, Terminal};
 
@@ -308,7 +308,10 @@ impl ExtData {
     }
 
     /// Extra properties for the `multi_a` fragment.
-    pub fn multi_a(k: usize, n: usize) -> Self {
+    pub fn multi_a<Pk: MiniscriptKey>(
+        thresh: &crate::Threshold<Pk, MAX_PUBKEYS_IN_CHECKSIGADD>,
+    ) -> Self {
+        let (k, n) = (thresh.k(), thresh.n());
         let num_cost = match (k > 16, n > 16) {
             (true, true) => 4,
             (false, true) => 3,
@@ -943,7 +946,7 @@ impl ExtData {
             Terminal::PkH(ref k) => Self::pk_h::<_, Ctx>(Some(k)),
             Terminal::RawPkH(..) => Self::pk_h::<Pk, Ctx>(None),
             Terminal::Multi(ref thresh) => Self::multi(thresh),
-            Terminal::MultiA(ref thresh) => Self::multi_a(thresh.k(), thresh.n()),
+            Terminal::MultiA(ref thresh) => Self::multi_a(thresh),
             Terminal::After(t) => Self::after(t),
             Terminal::Older(t) => Self::older(t),
             Terminal::Sha256(..) => Self::sha256(),
