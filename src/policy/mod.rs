@@ -53,7 +53,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Liftable<Pk> for Miniscript<Pk, Ctx>
     fn lift(&self) -> Result<Semantic<Pk>, ValidationError> {
         // The "sane" rules are pretty-much defined as "the rules that must be followed
         // for lifting to work and analysis to make sense"
-        self.validate(&ValidationParams::SANE)?;
+        self.validate_once(&ValidationParams::SANE)?;
 
         let mut stack = vec![];
         for item in self.rtl_post_order_iter() {

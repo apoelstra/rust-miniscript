@@ -35,7 +35,7 @@ pub struct Bare<Pk: MiniscriptKey> {
 
 impl<Pk: MiniscriptKey> Bare<Pk> {
     /// Create a new raw descriptor
-    pub fn new(ms: Miniscript<Pk, BareCtx>) -> Result<Self, ValidationError> {
+    pub fn new(mut ms: Miniscript<Pk, BareCtx>) -> Result<Self, ValidationError> {
         ms.validate(&BareCtx::SANE)?;
         Ok(Self { ms })
     }
@@ -155,9 +155,9 @@ impl<Pk: FromStrKey> Bare<Pk> {
         root: expression::TreeIterItem,
         params: &ValidationParams,
     ) -> Result<Self, ParseMiniscriptError> {
-        let sub = Miniscript::<Pk, BareCtx>::from_tree(root)?;
-        sub.validate(&BareCtx::CONSENSUS.intersect(params))?;
-        Ok(Bare::new(sub)?)
+        let params = BareCtx::CONSENSUS.intersect(params);
+        let ms = Miniscript::<Pk, BareCtx>::from_tree(root, &params)?;
+        Ok(Bare { ms })
     }
 }
 

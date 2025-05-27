@@ -20,7 +20,10 @@ use crate::prelude::*;
 use crate::primitives::threshold;
 #[cfg(doc)]
 use crate::Descriptor;
-use crate::{hash256, AbsLockTime, Miniscript, MiniscriptKey, RelLockTime, Threshold, ToPublicKey};
+use crate::{
+    hash256, AbsLockTime, Miniscript, MiniscriptKey, RelLockTime, Threshold, ToPublicKey,
+    ValidationParams,
+};
 
 /// Trait for parsing keys from byte slices
 pub trait ParseableKey: Sized + ToPublicKey + private::Sealed {
@@ -296,25 +299,25 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> TerminalStack<Pk, Ctx> {
     fn push(&mut self, ms: Miniscript<Pk, Ctx>) { self.0.push(ms) }
 
     /// reduce, type check and push a 0-arg node
-    fn reduce0(&mut self, ms: Terminal<Pk, Ctx>) -> Result<(), Error> {
-        let ms = Miniscript::from_ast(ms).map_err(Error::Construct)?;
+    fn reduce0(&mut self, ms: Terminal<Pk, Ctx>, params: &ValidationParams) -> Result<(), Error> {
+        let ms = Miniscript::from_ast(ms, params).map_err(Error::Construct)?;
         self.0.push(ms);
         Ok(())
     }
 
     ///reduce, type check and push a 1-arg node
-    fn reduce1<F>(&mut self, wrap: F) -> Result<(), Error>
+    fn reduce1<F>(&mut self, params: &ValidationParams, wrap: F) -> Result<(), Error>
     where
         F: FnOnce(Arc<Miniscript<Pk, Ctx>>) -> Terminal<Pk, Ctx>,
     {
         let top = self.pop().unwrap();
         let wrapped_ms = wrap(Arc::new(top));
 
-        self.reduce0(wrapped_ms)
+        self.reduce0(wrapped_ms, params)
     }
 
     ///reduce, type check and push a 2-arg node
-    fn reduce2<F>(&mut self, wrap: F) -> Result<(), Error>
+    fn reduce2<F>(&mut self, params: &ValidationParams, wrap: F) -> Result<(), Error>
     where
         F: FnOnce(Arc<Miniscript<Pk, Ctx>>, Arc<Miniscript<Pk, Ctx>>) -> Terminal<Pk, Ctx>,
     {
@@ -323,7 +326,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> TerminalStack<Pk, Ctx> {
 
         let wrapped_ms = wrap(Arc::new(left), Arc::new(right));
 
-        self.reduce0(wrapped_ms)
+        self.reduce0(wrapped_ms, params)
     }
 }
 
@@ -331,6 +334,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> TerminalStack<Pk, Ctx> {
 #[allow(unreachable_patterns)]
 pub fn decode<Ctx: ScriptContext>(
     tokens: &mut TokenIter,
+    params: &ValidationParams,
 ) -> Result<Miniscript<Ctx::Key, Ctx>, Error> {
     let mut non_term = Vec::with_capacity(tokens.len());
     let mut term = TerminalStack(Vec::with_capacity(tokens.len()));
@@ -568,7 +572,7 @@ pub fn decode<Ctx: ScriptContext>(
                     tokens,
                     Tk::Swap => {},
                 );
-                term.reduce1(Terminal::Swap)?;
+                term.reduce1(params, Terminal::Swap)?;
                 // Swap must be always be terminating a NonTerm as it cannot be in and_v
             }
             Some(NonTerm::Alt) => {
@@ -576,25 +580,25 @@ pub fn decode<Ctx: ScriptContext>(
                     tokens,
                     Tk::ToAltStack => {},
                 );
-                term.reduce1(Terminal::Alt)?;
+                term.reduce1(params, Terminal::Alt)?;
             }
-            Some(NonTerm::Check) => term.reduce1(Terminal::Check)?,
-            Some(NonTerm::DupIf) => term.reduce1(Terminal::DupIf)?,
-            Some(NonTerm::Verify) => term.reduce1(Terminal::Verify)?,
-            Some(NonTerm::NonZero) => term.reduce1(Terminal::NonZero)?,
-            Some(NonTerm::ZeroNotEqual) => term.reduce1(Terminal::ZeroNotEqual)?,
+            Some(NonTerm::Check) => term.reduce1(params, Terminal::Check)?,
+            Some(NonTerm::DupIf) => term.reduce1(params, Terminal::DupIf)?,
+            Some(NonTerm::Verify) => term.reduce1(params, Terminal::Verify)?,
+            Some(NonTerm::NonZero) => term.reduce1(params, Terminal::NonZero)?,
+            Some(NonTerm::ZeroNotEqual) => term.reduce1(params, Terminal::ZeroNotEqual)?,
             Some(NonTerm::AndV) => {
                 if is_and_v(tokens) {
                     non_term.push(NonTerm::AndV);
                     non_term.push(NonTerm::MaybeAndV);
                 } else {
-                    term.reduce2(Terminal::AndV)?
+                    term.reduce2(params, Terminal::AndV)?
                 }
             }
-            Some(NonTerm::AndB) => term.reduce2(Terminal::AndB)?,
-            Some(NonTerm::OrB) => term.reduce2(Terminal::OrB)?,
-            Some(NonTerm::OrC) => term.reduce2(Terminal::OrC)?,
-            Some(NonTerm::OrD) => term.reduce2(Terminal::OrD)?,
+            Some(NonTerm::AndB) => term.reduce2(params, Terminal::AndB)?,
+            Some(NonTerm::OrB) => term.reduce2(params, Terminal::OrB)?,
+            Some(NonTerm::OrC) => term.reduce2(params, Terminal::OrC)?,
+            Some(NonTerm::OrD) => term.reduce2(params, Terminal::OrD)?,
             Some(NonTerm::Tern) => {
                 let a = term.pop().unwrap();
                 let b = term.pop().unwrap();
@@ -602,7 +606,7 @@ pub fn decode<Ctx: ScriptContext>(
                 let wrapped_ms = Terminal::AndOr(Arc::new(a), Arc::new(c), Arc::new(b));
 
                 term.0
-                    .push(Miniscript::from_ast(wrapped_ms).map_err(Error::Construct)?);
+                    .push(Miniscript::from_ast(wrapped_ms, params).map_err(Error::Construct)?);
             }
             Some(NonTerm::ThreshW { n, k }) => {
                 match_token!(
@@ -623,7 +627,10 @@ pub fn decode<Ctx: ScriptContext>(
                 for _ in 0..n {
                     subs.push(Arc::new(term.pop().unwrap()));
                 }
-                term.reduce0(Terminal::Thresh(Threshold::new(k, subs).map_err(Error::Threshold)?))?;
+                term.reduce0(
+                    Terminal::Thresh(Threshold::new(k, subs).map_err(Error::Threshold)?),
+                    params,
+                )?;
             }
             Some(NonTerm::EndIf) => {
                 match_token!(
@@ -659,7 +666,7 @@ pub fn decode<Ctx: ScriptContext>(
                 match_token!(
                     tokens,
                     Tk::If => {
-                        term.reduce2(Terminal::OrI)?;
+                        term.reduce2(params, Terminal::OrI)?;
                     },
                     Tk::NotIf => {
                         non_term.push(NonTerm::Tern);

@@ -678,13 +678,12 @@ fn insert_elem<Pk: MiniscriptKey, Ctx: ScriptContext>(
     sat_prob: f64,
     dissat_prob: Option<f64>,
 ) -> bool {
-    // FIXME turn off some checks in Ctx::SANE. In particular the duplicate pubkey
-    //  check is pretty expensive and serves no purpose since we checked the policy
-    //  before compiling.
-    if elem.ms.validate_non_top_level(&Ctx::SANE).is_err() {
+    // FIXME rather than calling `validate_non_top_level_once` we should be
+    //  validating at construction time, which caches validation checks and
+    //  should be faster.
+    if elem.ms.validate_non_top_level_once(&Ctx::SANE).is_err() {
         return false;
     }
-
     let elem_cost = elem.cost_1d(sat_prob, dissat_prob);
 
     let elem_key = CompilationKey::from_type(elem.ms.ty, elem.ms.ext.has_free_verify, dissat_prob);
@@ -1023,7 +1022,7 @@ where
                 ret
             }));
 
-            if let Ok(ms) = Miniscript::from_ast(ast) {
+            if let Ok(ms) = Miniscript::from_ast(ast, &Ctx::SANE) {
                 let ast_ext = AstElemExt {
                     ms: Arc::new(ms),
                     comp_ext_data: CompilerExtData::threshold(k, n, |i| sub_ext_data[i]),

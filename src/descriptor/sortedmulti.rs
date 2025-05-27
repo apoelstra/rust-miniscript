@@ -36,7 +36,7 @@ pub struct SortedMultiVec<Pk: MiniscriptKey, Ctx: ScriptContext> {
 
 impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
     fn constructor_check(mut self, params: ValidationParams) -> Result<Self, ValidationError> {
-        let ms = Miniscript::<Pk, Ctx>::multi(self.inner);
+        let mut ms = Miniscript::<Pk, Ctx>::multi(self.inner);
         // Check the limits before creating a new SortedMultiVec
         // For example, under p2sh context the scriptlen can only be
         // upto 520 bytes.

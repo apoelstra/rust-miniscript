@@ -321,8 +321,9 @@ mod private {
         /// Display code of type_check.
         pub fn from_ast(
             t: Terminal<Pk, Ctx>,
+            params: &ValidationParams,
         ) -> Result<Miniscript<Pk, Ctx>, WithSpan<ConstructError>> {
-            let res = Miniscript {
+            let mut res = Miniscript {
                 ty: Type::type_check(&t)
                     .map_err(ConstructError::TypeCheck)
                     .map_err(|e| WithSpan::new(e).with_string(t.to_string()))?,
@@ -331,7 +332,7 @@ mod private {
                 validated: ValidationParams::MAX,
                 phantom: PhantomData,
             };
-            res.validate_non_top_level(&ValidationParams { allow_raw_pkh: true, ..Ctx::CONSENSUS })
+            res.validate_non_top_level(params)
                 .map_err(ConstructError::Validation)
                 .map_err(|e| WithSpan::new(e).with_string(res.to_string()))?;
             Ok(res)
@@ -350,14 +351,39 @@ mod private {
             Miniscript { node, ty, ext, validated: ValidationParams::MAX, phantom: PhantomData }
         }
 
-        /// Validates whether a given fragment meets the given set of
-        /// validation parameters.
-        pub fn validate(&self, params: &ValidationParams) -> Result<(), ValidationError>
+        /// Accessor for the set of parameters which this [`Miniscript`] has been
+        /// validated against.
+        pub fn validated_params(&self) -> &ValidationParams { &self.validated }
+
+        /// Validates whether a given fragment meets the given set of validation parameters.
+        ///
+        /// Updates the fragment to record which checks have been done. If you do not have
+        /// mutable access to the fragment you may wish to call [`Miniscript::validate_once`].
+        pub fn validate(&mut self, params: &ValidationParams) -> Result<(), ValidationError> {
+            self.validate_once(params)?;
+            self.validated = self.validated.intersect(params);
+            Ok(())
+        }
+
+        /// Functional version of [`Miniscript::validate`].
+        pub fn validated(mut self, params: &ValidationParams) -> Result<Self, ValidationError> {
+            self.validate(params)?;
+            Ok(self)
+        }
+
+        /// Validates whether a given fragment meets the given set of validation parameters.
+        ///
+        /// Does not update the Miniscript object to cache which checks have been done.
+        /// If you have ownership of the object you will probably prefer to call
+        /// [`Miniscript::validate`].
+        pub fn validate_once(&self, params: &ValidationParams) -> Result<(), ValidationError>
         where
             Pk: MiniscriptKey,
             Ctx: ScriptContext,
         {
-            self.validate_non_top_level(params)?;
+            // When adding anything to this function, remember to update the whitelist
+            // of "top-level only" checks in `validate_non_top_level`!
+            self.validate_non_top_level_once(params)?;
 
             // Malleability is only a top-level check since you can fix malleability
             // in some cases by adding wrappers.
@@ -401,12 +427,43 @@ mod private {
             Ok(())
         }
 
+        /// Functional version of [`Miniscript::validate_non_top_level`].
+        pub fn validated_non_top_level(
+            mut self,
+            params: &ValidationParams,
+        ) -> Result<Self, ValidationError> {
+            self.validate_non_top_level(params)?;
+            Ok(self)
+        }
+
+        /// Validates a miniscript, doing only the checks that are applicable to all nodes,
+        /// not just top-level ones.
+        pub fn validate_non_top_level(
+            &mut self,
+            params: &ValidationParams,
+        ) -> Result<(), ValidationError> {
+            self.validate_non_top_level_once(params)?;
+            self.validated = self.validated.intersect(&ValidationParams {
+                allow_malleability: true,
+                allow_non_b: true,
+                allow_sigless_branch: true,
+                allow_unsatisfiable: true,
+                allow_duplicate_keys: true,
+                ..*params
+            });
+            Ok(())
+        }
+
         /// Validates a miniscript, doing only the checks that are applicable to all nodes,
         /// not just top-level ones.
         ///
         /// In particular this excludes the "must be B" and "no sigless branches" checks.
         /// To get these, run [`Self::validate`] which also calls through to this method.
-        pub fn validate_non_top_level(
+        ///
+        /// Does not update the Miniscript object to cache which checks have been done.
+        /// If you have ownership of the object you will probably prefer to call
+        /// [`Miniscript::validate_non_top_level`].
+        pub fn validate_non_top_level_once(
             &self,
             params: &ValidationParams,
         ) -> Result<(), ValidationError> {
@@ -796,7 +853,7 @@ impl<Ctx: ScriptContext> Miniscript<Ctx::Key, Ctx> {
         let mut iter = TokenIter::new(tokens);
         let add_span = |e| crate::WithSpan::new(e).with_string(script.to_hex_string());
 
-        let top = decode::decode(&mut iter)?;
+        let mut top = decode::decode(&mut iter, params)?;
         types::Type::type_check(&top.node)
             .map_err(ConstructError::TypeCheck)
             .map_err(add_span)
@@ -940,6 +997,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
         T: Translator<Pk>,
     {
         let mut translated = vec![];
+        let new_params = self.validated_params().intersect(&CtxQ::CONSENSUS);
         for data in self.rtl_post_order_iter() {
             let new_term = match data.node.node {
                 Terminal::PkK(ref p) => Terminal::PkK(t.pk(p)?),
@@ -991,7 +1049,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
                     Terminal::MultiA(thresh.translate_ref(|k| t.pk(k))?)
                 }
             };
-            let new_ms = Miniscript::from_ast(new_term)
+            let new_ms = Miniscript::from_ast(new_term, &new_params)
                 .map_err(|with_span| {
                     with_span
                         .map(ConstructError::unwrap_validation_err)
@@ -1001,10 +1059,11 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
             translated.push(Arc::new(new_ms));
         }
 
-        let ret = translated.pop().unwrap();
-        ret.validate(&CtxQ::SANE)
+        let ret = Arc::try_unwrap(translated.pop().unwrap())
+            .unwrap()
+            .validated(&new_params)
             .map_err(TranslateErr::OuterError)?;
-        Ok(Arc::try_unwrap(ret).unwrap())
+        Ok(ret)
     }
 
     /// Substitutes raw public keys hashes with the public keys as provided by map.
@@ -1106,24 +1165,26 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     ) -> Result<Self, ParseMiniscriptError> {
         // This checks for invalid ASCII chars
         let top = expression::Tree::from_str(s)?;
-        let ms = Miniscript::<Pk, Ctx>::from_tree(top.root())?;
-        ms.validate(params)?;
-        Ok(ms)
+        Miniscript::<Pk, Ctx>::from_tree(top.root(), params)
     }
 }
 
 impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     /// Parse from an expression tree.
-    pub fn from_tree(root: TreeIterItem) -> Result<Self, ParseMiniscriptError> {
+    pub fn from_tree(
+        root: TreeIterItem,
+        params: &ValidationParams,
+    ) -> Result<Self, ParseMiniscriptError> {
         #[allow(clippy::type_complexity)]
         fn binary<Pk: MiniscriptKey, Ctx: ScriptContext>(
             node: expression::TreeIterItem,
             stack: &mut Vec<Arc<Miniscript<Pk, Ctx>>>,
             name: &'static str,
+            params: &ValidationParams,
             termfn: fn(Arc<Miniscript<Pk, Ctx>>, Arc<Miniscript<Pk, Ctx>>) -> Terminal<Pk, Ctx>,
         ) -> Result<Miniscript<Pk, Ctx>, ParseMiniscriptError> {
             node.verify_n_children(name, 2..=2)?;
-            Miniscript::from_ast(termfn(stack.pop().unwrap(), stack.pop().unwrap()))
+            Miniscript::from_ast(termfn(stack.pop().unwrap(), stack.pop().unwrap()), params)
                 .map_err(ParseMiniscriptError::Construct)
         }
         root.verify_no_curly_braces()?;
@@ -1198,42 +1259,45 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
                     node.verify_n_children("0", 0..=0)?;
                     Miniscript::FALSE
                 }
-                "and_v" => binary(node, &mut stack, "and_v", Terminal::AndV)?,
-                "and_b" => binary(node, &mut stack, "and_b", Terminal::AndB)?,
-                "and_n" => binary(node, &mut stack, "and_n", |x, y| {
+                "and_v" => binary(node, &mut stack, "and_v", params, Terminal::AndV)?,
+                "and_b" => binary(node, &mut stack, "and_b", params, Terminal::AndB)?,
+                "and_n" => binary(node, &mut stack, "and_n", params, |x, y| {
                     Terminal::AndOr(x, y, Arc::new(Miniscript::FALSE))
                 })?,
                 "andor" => {
                     node.verify_n_children("andor", 3..=3)?;
-                    Miniscript::from_ast(Terminal::AndOr(
-                        stack.pop().unwrap(),
-                        stack.pop().unwrap(),
-                        stack.pop().unwrap(),
-                    ))?
+                    Miniscript::from_ast(
+                        Terminal::AndOr(
+                            stack.pop().unwrap(),
+                            stack.pop().unwrap(),
+                            stack.pop().unwrap(),
+                        ),
+                        params,
+                    )?
                 }
-                "or_b" => binary(node, &mut stack, "or_b", Terminal::OrB)?,
-                "or_d" => binary(node, &mut stack, "or_d", Terminal::OrD)?,
-                "or_c" => binary(node, &mut stack, "or_c", Terminal::OrC)?,
-                "or_i" => binary(node, &mut stack, "or_i", Terminal::OrI)?,
+                "or_b" => binary(node, &mut stack, "or_b", params, Terminal::OrB)?,
+                "or_d" => binary(node, &mut stack, "or_d", params, Terminal::OrD)?,
+                "or_c" => binary(node, &mut stack, "or_c", params, Terminal::OrC)?,
+                "or_i" => binary(node, &mut stack, "or_i", params, Terminal::OrI)?,
                 "thresh" => {
                     let term = node
                         .verify_threshold(|_| {
                             Result::<_, ParseMiniscriptError>::Ok(stack.pop().unwrap())
                         })
                         .map(Terminal::Thresh)?;
-                    Miniscript::from_ast(term)?
+                    Miniscript::from_ast(term, params)?
                 }
                 "multi" => {
                     let term = node
                         .verify_threshold(|sub| sub.verify_terminal("public_key"))
                         .map(Terminal::Multi)?;
-                    Miniscript::from_ast(term)?
+                    Miniscript::from_ast(term, params)?
                 }
                 "multi_a" => {
                     let term = node
                         .verify_threshold(|sub| sub.verify_terminal("public_key"))
                         .map(Terminal::MultiA)?;
-                    Miniscript::from_ast(term)?
+                    Miniscript::from_ast(term, params)?
                 }
                 x => return Err(crate::ParseTreeError::UnknownName { name: x.to_owned() }.into()),
             };
@@ -1267,7 +1331,7 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
                             .into())
                         }
                     };
-                    new = Arc::new(Miniscript::from_ast(term)?);
+                    new = Arc::new(Miniscript::from_ast(term, params)?);
                 }
             }
 
@@ -1275,8 +1339,11 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
         }
 
         assert_eq!(stack.len(), 1);
-        let ret = stack.pop().unwrap();
-        Ok(Arc::try_unwrap(ret).unwrap())
+        let mut ret = Arc::try_unwrap(stack.pop().unwrap()).unwrap();
+        // Validate top-level params; during construction we only validated the
+        // non-top-level ones.
+        ret.validate(params)?;
+        Ok(ret)
     }
 }
 
@@ -1502,15 +1569,17 @@ mod tests {
         let hash = hash160::Hash::from_byte_array([17; 20]);
 
         let pk_node = Terminal::Check(Arc::new(
-            Miniscript::from_ast(Terminal::PkK(String::from(""))).unwrap(),
+            Miniscript::from_ast(Terminal::PkK(String::from("")), &ValidationParams::SANE).unwrap(),
         ));
-        let pkk_ms: Miniscript<String, Segwitv0> = Miniscript::from_ast(pk_node).unwrap();
+        let pkk_ms: Miniscript<String, Segwitv0> =
+            Miniscript::from_ast(pk_node, &ValidationParams::SANE).unwrap();
         dummy_string_rtt(pkk_ms, "[B/onduesm]pk(\"\")", "pk()");
 
         let pkh_node = Terminal::Check(Arc::new(
-            Miniscript::from_ast(Terminal::PkH(String::from(""))).unwrap(),
+            Miniscript::from_ast(Terminal::PkH(String::from("")), &ValidationParams::SANE).unwrap(),
         ));
-        let pkh_ms: Miniscript<String, Segwitv0> = Miniscript::from_ast(pkh_node).unwrap();
+        let pkh_ms: Miniscript<String, Segwitv0> =
+            Miniscript::from_ast(pkh_node, &ValidationParams::SANE).unwrap();
 
         let expected_debug = "[B/nduesm]pkh(\"\")";
         let expected_display = "pkh()";
@@ -1525,8 +1594,11 @@ mod tests {
             assert_eq!(display, expected);
         }
 
-        let pkk_node = Terminal::Check(Arc::new(Miniscript::from_ast(Terminal::PkK(pk)).unwrap()));
-        let pkk_ms: Segwitv0Script = Miniscript::from_ast(pkk_node).unwrap();
+        let pkk_node = Terminal::Check(Arc::new(
+            Miniscript::from_ast(Terminal::PkK(pk), &ValidationParams::SANE).unwrap(),
+        ));
+        let pkk_ms: Segwitv0Script =
+            Miniscript::from_ast(pkk_node, &ValidationParams::SANE).unwrap();
 
         script_rtt(
             pkk_ms,
@@ -1534,9 +1606,15 @@ mod tests {
              202020202ac",
         );
 
-        let pkh_ms: Segwitv0Script = Miniscript::from_ast(Terminal::Check(Arc::new(
-            Miniscript::from_ast(Terminal::RawPkH(hash)).unwrap(),
-        )))
+        // To construct a raw PkH you must set allow_raw_pkh, which is not
+        // on by default even in ValidationParams::CONSENSUS.
+        let params = ValidationParams { allow_raw_pkh: true, ..ValidationParams::SANE };
+        let pkh_ms: Segwitv0Script = Miniscript::from_ast(
+            Terminal::Check(Arc::new(
+                Miniscript::from_ast(Terminal::RawPkH(hash), &params).unwrap(),
+            )),
+            &params,
+        )
         .unwrap();
 
         script_rtt(pkh_ms, "76a914111111111111111111111111111111111111111188ac");
@@ -1979,15 +2057,14 @@ mod tests {
     #[test]
     fn mixed_timelocks() {
         // You cannot parse a Miniscript that mixes timelocks.
-        let err = Miniscript::<String, Segwitv0>::from_str(
-            "and_v(v:and_v(v:older(4194304),pk(A)),and_v(v:older(1),pk(B)))",
-        )
-        .unwrap_err();
+        let s = "and_v(v:and_v(v:older(4194304),pk(A)),and_v(v:older(1),pk(B)))";
+        let err = s.parse::<Miniscript<String, Segwitv0>>().unwrap_err();
         assert_eq!(
             err,
-            ParseMiniscriptError::Construct(crate::WithSpan::new(ConstructError::Validation(
-                ValidationError::MixedTimeLocks
-            )))
+            ParseMiniscriptError::Construct(
+                crate::WithSpan::new(ConstructError::Validation(ValidationError::MixedTimeLocks))
+                    .with_string(s.to_owned())
+            )
         );
 
         // Though you can in an or() rather than and()
@@ -2006,11 +2083,15 @@ mod tests {
         assert!(matches!(ok_insane.lift().unwrap_err(), ValidationError::MixedTimeLocks,));
         // nor can it have sane rules applied to it
         assert_eq!(
-            ok_insane.validate(&ValidationParams::SANE).unwrap_err(),
+            ok_insane
+                .validate_once(&ValidationParams::SANE)
+                .unwrap_err(),
             ValidationError::MixedTimeLocks,
         );
         assert_eq!(
-            ok_insane.validate(&ValidationParams::SANE).unwrap_err(),
+            ok_insane
+                .validate_once(&ValidationParams::SANE)
+                .unwrap_err(),
             ValidationError::MixedTimeLocks,
         );
     }
@@ -2246,7 +2327,7 @@ mod tests {
         // we exceed the opcode limit before we exceed the size limit.
         assert_eq!(
             segwit_multi_ms.unwrap_err().to_string(),
-            "in \"and_v(v:multi(20,100,101,102,103,104,105,106,107,108,109,110,111,112,113,114,115,116,117,118,119),and_v(v:multi(20,120,121,122,123,124,125,126,127,128,129,130,131,132,133,134,135,136,137,138,139),and_v(v:multi(20,140,141,142,143,144,145,146,147,148,149,150,151,152,153,154,155,156,157,158,159),and_v(v:multi(20,160,161,162,163,164,165,166,167,168,169,170,171,172,173,174,175,176,177,178,179),and_v(v:multi(20,180,181,182,183,184,185,186,187,188,189,190,191,192,193,194,195,196,197,198,199),and_v(v:multi(20,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219),and_v(v:multi(20,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239),and_v(v:multi(20,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259),and_v(v:multi(20,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279),multi(20,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299))))))))))\": a satisfaction path executes at least 210 non-push opcodes (limit: 201).",
+            "in \"and_v(v:multi(20,200,201,202,203,204,205,206,207,208,209,210,211,212,213,214,215,216,217,218,219),and_v(v:multi(20,220,221,222,223,224,225,226,227,228,229,230,231,232,233,234,235,236,237,238,239),and_v(v:multi(20,240,241,242,243,244,245,246,247,248,249,250,251,252,253,254,255,256,257,258,259),and_v(v:multi(20,260,261,262,263,264,265,266,267,268,269,270,271,272,273,274,275,276,277,278,279),multi(20,280,281,282,283,284,285,286,287,288,289,290,291,292,293,294,295,296,297,298,299)))))\": a satisfaction path requires at least 106 witness items (limit: 100).",
         );
         assert_eq!(
             bare_multi_ms.unwrap_err().to_string(),

@@ -39,7 +39,7 @@ impl<Pk: MiniscriptKey> Wsh<Pk> {
     pub fn as_inner(&self) -> &WshInner<Pk> { &self.inner }
 
     /// Create a new wsh descriptor
-    pub fn new(ms: Miniscript<Pk, Segwitv0>) -> Result<Self, ValidationError> {
+    pub fn new(mut ms: Miniscript<Pk, Segwitv0>) -> Result<Self, ValidationError> {
         ms.validate(&Segwitv0::SANE)?;
         Ok(Self { inner: WshInner::Ms(ms) })
     }
@@ -220,8 +220,7 @@ impl<Pk: FromStrKey> Wsh<Pk> {
                 inner: WshInner::SortedMulti(SortedMultiVec::from_tree(top, params)?),
             });
         }
-        let sub = Miniscript::from_tree(top)?;
-        sub.validate(params)?;
+        let sub = Miniscript::from_tree(top, params)?;
         Ok(Wsh { inner: WshInner::Ms(sub) })
     }
 }
@@ -305,6 +304,11 @@ impl<Pk: MiniscriptKey> Wpkh<Pk> {
     where
         T: Translator<Pk>,
     {
+        // In theory we should be caching the original validation parameters here
+        // rather than calling `Wpkh::new` and re-validating with Segwitv0::SANE.
+        // In practice it doesn't matter because the only validation rule that
+        // applies is "no uncompressed keys" which is a consensus rule and enforced
+        // by our constructors no matter what the user tries to specify.
         let res = Wpkh::new(t.pk(&self.pk)?);
         match res {
             Ok(pk) => Ok(pk),

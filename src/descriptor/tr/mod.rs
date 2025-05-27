@@ -333,8 +333,7 @@ impl<Pk: FromStrKey> Tr<Pk> {
                 node.verify_n_children("taptree branch", 2..=2)?;
                 tree_builder.push_inner_node()?;
             } else {
-                let script = Miniscript::from_tree(node)?;
-                script.validate(params)?;
+                let script = Miniscript::from_tree(node, params)?;
 
                 tree_builder.push_leaf(script);
                 tap_tree_iter.skip_descendants();

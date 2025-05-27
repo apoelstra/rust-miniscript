@@ -95,8 +95,7 @@ impl<Pk: FromStrKey> Sh<Pk> {
             "wpkh" => ShInner::Wpkh(Wpkh::from_tree(top, params)?),
             "sortedmulti" => ShInner::SortedMulti(SortedMultiVec::from_tree(top, params)?),
             _ => {
-                let sub = Miniscript::from_tree(top)?;
-                sub.validate(params)?;
+                let sub = Miniscript::from_tree(top, params)?;
                 ShInner::Ms(sub)
             }
         };
@@ -120,7 +119,7 @@ impl<Pk: MiniscriptKey> Sh<Pk> {
     pub fn as_inner(&self) -> &ShInner<Pk> { &self.inner }
 
     /// Create a new p2sh descriptor with the raw miniscript
-    pub fn new(ms: Miniscript<Pk, Legacy>) -> Result<Self, ValidationError> {
+    pub fn new(mut ms: Miniscript<Pk, Legacy>) -> Result<Self, ValidationError> {
         ms.validate(&Legacy::SANE)?;
         Ok(Self { inner: ShInner::Ms(ms) })
     }

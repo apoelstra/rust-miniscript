@@ -201,7 +201,7 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     // TODO: We might require other compile errors for Taproot.
     #[cfg(feature = "compiler")]
     pub fn compile_tr(&self, unspendable_key: Option<Pk>) -> Result<Descriptor<Pk>, CompilerError> {
-        self.validate(&ValidationParams::SANE)
+        self.validate(&Tap::SANE)
             .map_err(CompilerError::Validation)?;
         self.check_binary_ops()?;
         match self.is_safe_nonmalleable() {
@@ -263,7 +263,7 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
         &self,
         unspendable_key: Option<Pk>,
     ) -> Result<Descriptor<Pk>, CompilerError> {
-        self.validate(&ValidationParams::SANE)
+        self.validate(&Tap::SANE)
             .map_err(CompilerError::Validation)?;
         self.check_binary_ops()?;
         match self.is_safe_nonmalleable() {
@@ -319,8 +319,6 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
         &self,
         desc_ctx: DescriptorCtx<Pk>,
     ) -> Result<Descriptor<Pk>, CompilerError> {
-        self.validate(&ValidationParams::SANE)
-            .map_err(CompilerError::Validation)?;
         self.check_binary_ops()?;
         match self.is_safe_nonmalleable() {
             (false, _) => Err(CompilerError::TopLevelNonSafe),
@@ -348,13 +346,16 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     /// the compiler document in doc/compiler.md for more details.
     #[cfg(feature = "compiler")]
     pub fn compile<Ctx: ScriptContext>(&self) -> Result<Miniscript<Pk, Ctx>, CompilerError> {
-        self.validate(&ValidationParams::SANE)
-            .map_err(CompilerError::Validation)?;
         self.check_binary_ops()?;
         match self.is_safe_nonmalleable() {
             (false, _) => Err(CompilerError::TopLevelNonSafe),
             (_, false) => Err(CompilerError::ImpossibleNonMalleableCompilation),
-            _ => compiler::best_compilation(self),
+            _ => {
+                let ret = compiler::best_compilation(self)?
+                    .validated(&Ctx::SANE)
+                    .map_err(CompilerError::Validation)?;
+                Ok(ret)
+            }
         }
     }
 }
