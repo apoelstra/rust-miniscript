@@ -140,6 +140,46 @@ impl SatData {
     }
 }
 
+/// The number of paths that a multipath key extends into, if this node has any
+/// multipath keys.
+#[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
+pub enum MultipathLen {
+    /// There are multipath key(s) and this is their length.
+    N(usize),
+    /// There are multiple multipath keys with different lengths; here are
+    /// two of them.
+    Inconsistent(usize, usize),
+    /// There are no multipath keys.
+    NoMultipathKeys,
+}
+
+impl MultipathLen {
+    /// Constructs a multipath length from a pubkey.
+    fn from_pk<Pk: MiniscriptKey>(pk: &Pk) -> Self {
+        let n_paths = pk.num_der_paths();
+        if n_paths == 0 || n_paths == 1 {
+            Self::NoMultipathKeys
+        } else {
+            Self::N(n_paths)
+        }
+    }
+
+    /// Combines two multipath lengths in the obvious way.
+    fn intersect(self, other: Self) -> Self {
+        match (self, other) {
+            (x, Self::NoMultipathKeys) | (Self::NoMultipathKeys, x) => x,
+            (_, x @ Self::Inconsistent(..)) | (x @ Self::Inconsistent(..), _) => x,
+            (Self::N(x), Self::N(y)) => {
+                if x == y {
+                    Self::N(x)
+                } else {
+                    Self::Inconsistent(x, y)
+                }
+            }
+        }
+    }
+}
+
 /// Structure representing the extra type properties of a fragment.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Hash)]
 pub struct ExtData {
@@ -156,6 +196,9 @@ pub struct ExtData {
     pub dissat_data: Option<SatData>,
     /// The timelock info about heightlocks and timelocks
     pub timelock_info: TimelockInfo,
+    /// The number of paths that a multipath key extends into, if this node has any
+    /// multipath keys.
+    pub multipath_len: MultipathLen,
     /// The miniscript tree depth/height of this node.
     /// Used for checking the max depth of the miniscript tree to prevent stack overflow.
     pub tree_height: usize,
@@ -176,6 +219,7 @@ impl ExtData {
             max_exec_op_count: 0,
         }),
         timelock_info: TimelockInfo::new(),
+        multipath_len: MultipathLen::NoMultipathKeys,
         tree_height: 0,
     };
 
@@ -193,6 +237,7 @@ impl ExtData {
         }),
         dissat_data: None,
         timelock_info: TimelockInfo::new(),
+        multipath_len: MultipathLen::NoMultipathKeys,
         tree_height: 0,
     };
 }
@@ -227,6 +272,7 @@ impl ExtData {
                 max_exec_op_count: 0,
             }),
             timelock_info: TimelockInfo::default(),
+            multipath_len: MultipathLen::from_pk(pk),
             tree_height: 0,
         }
     }
@@ -263,6 +309,12 @@ impl ExtData {
                 max_exec_op_count: 0,
             }),
             timelock_info: TimelockInfo::default(),
+            multipath_len: match pk {
+                Some(pk) => MultipathLen::from_pk(pk),
+                // A raw pubkey hash represents a single concrete key (barring hash collisions),
+                // not a multipath (or wildcard, or whatever) key.
+                None => MultipathLen::NoMultipathKeys,
+            },
             tree_height: 0,
         }
     }
@@ -303,6 +355,10 @@ impl ExtData {
                 max_exec_op_count: n,
             }),
             timelock_info: TimelockInfo::new(),
+            multipath_len: thresh
+                .iter()
+                .map(MultipathLen::from_pk)
+                .fold(MultipathLen::NoMultipathKeys, MultipathLen::intersect),
             tree_height: 0,
         }
     }
@@ -337,6 +393,10 @@ impl ExtData {
                 max_exec_op_count: 0,
             }),
             timelock_info: TimelockInfo::new(),
+            multipath_len: thresh
+                .iter()
+                .map(MultipathLen::from_pk)
+                .fold(MultipathLen::NoMultipathKeys, MultipathLen::intersect),
             tree_height: 0,
         }
     }
@@ -362,6 +422,7 @@ impl ExtData {
                 max_exec_op_count: 0,
             }),
             timelock_info: TimelockInfo::new(),
+            multipath_len: MultipathLen::NoMultipathKeys,
             tree_height: 0,
         }
     }
@@ -387,6 +448,7 @@ impl ExtData {
                 max_exec_op_count: 0,
             }),
             timelock_info: TimelockInfo::new(),
+            multipath_len: MultipathLen::NoMultipathKeys,
             tree_height: 0,
         }
     }
@@ -412,6 +474,7 @@ impl ExtData {
                 max_exec_op_count: 0,
             }),
             timelock_info: TimelockInfo::new(),
+            multipath_len: MultipathLen::NoMultipathKeys,
             tree_height: 0,
         }
     }
@@ -437,6 +500,7 @@ impl ExtData {
                 max_exec_op_count: 0,
             }),
             timelock_info: TimelockInfo::new(),
+            multipath_len: MultipathLen::NoMultipathKeys,
             tree_height: 0,
         }
     }
@@ -462,6 +526,7 @@ impl ExtData {
                 cltv_with_time: t.is_block_time(),
                 contains_combination: false,
             },
+            multipath_len: MultipathLen::NoMultipathKeys,
             tree_height: 0,
         }
     }
@@ -487,6 +552,7 @@ impl ExtData {
                 cltv_with_time: false,
                 contains_combination: false,
             },
+            multipath_len: MultipathLen::NoMultipathKeys,
             tree_height: 0,
         }
     }
@@ -500,6 +566,7 @@ impl ExtData {
             sat_data: self.sat_data,
             dissat_data: self.dissat_data,
             timelock_info: self.timelock_info,
+            multipath_len: self.multipath_len,
             tree_height: self.tree_height + 1,
         }
     }
@@ -513,6 +580,7 @@ impl ExtData {
             sat_data: self.sat_data,
             dissat_data: self.dissat_data,
             timelock_info: self.timelock_info,
+            multipath_len: self.multipath_len,
             tree_height: self.tree_height + 1,
         }
     }
@@ -526,6 +594,7 @@ impl ExtData {
             sat_data: self.sat_data,
             dissat_data: self.dissat_data,
             timelock_info: self.timelock_info,
+            multipath_len: self.multipath_len,
             tree_height: self.tree_height + 1,
         }
     }
@@ -552,6 +621,7 @@ impl ExtData {
                 max_exec_op_count: 0,
             }),
             timelock_info: self.timelock_info,
+            multipath_len: self.multipath_len,
             tree_height: self.tree_height + 1,
         }
     }
@@ -566,6 +636,7 @@ impl ExtData {
             sat_data: self.sat_data,
             dissat_data: None,
             timelock_info: self.timelock_info,
+            multipath_len: self.multipath_len,
             tree_height: self.tree_height + 1,
         }
     }
@@ -585,6 +656,7 @@ impl ExtData {
                 max_exec_op_count: 0,
             }),
             timelock_info: self.timelock_info,
+            multipath_len: self.multipath_len,
             tree_height: self.tree_height + 1,
         }
     }
@@ -601,6 +673,7 @@ impl ExtData {
             sat_data: self.sat_data,
             dissat_data: self.dissat_data,
             timelock_info: self.timelock_info,
+            multipath_len: self.multipath_len,
             tree_height: self.tree_height + 1,
         }
     }
@@ -641,6 +714,7 @@ impl ExtData {
                 max_exec_op_count: l.max_exec_op_count + r.max_exec_op_count,
             }),
             timelock_info: TimelockInfo::combine_and(l.timelock_info, r.timelock_info),
+            multipath_len: l.multipath_len.intersect(r.multipath_len),
             tree_height: 1 + cmp::max(l.tree_height, r.tree_height),
         }
     }
@@ -661,6 +735,7 @@ impl ExtData {
             }),
             dissat_data: None,
             timelock_info: TimelockInfo::combine_and(l.timelock_info, r.timelock_info),
+            multipath_len: l.multipath_len.intersect(r.multipath_len),
             tree_height: 1 + cmp::max(l.tree_height, r.tree_height),
         }
     }
@@ -689,6 +764,7 @@ impl ExtData {
             ),
             dissat_data: sat_concat(l.dissat_data, r.dissat_data),
             timelock_info: TimelockInfo::combine_or(l.timelock_info, r.timelock_info),
+            multipath_len: l.multipath_len.intersect(r.multipath_len),
             tree_height: 1 + cmp::max(l.tree_height, r.tree_height),
         }
     }
@@ -712,6 +788,7 @@ impl ExtData {
             sat_data: SatData::fieldwise_max_opt(l.sat_data, sat_concat(l.dissat_data, r.sat_data)),
             dissat_data: sat_concat(l.dissat_data, r.dissat_data),
             timelock_info: TimelockInfo::combine_or(l.timelock_info, r.timelock_info),
+            multipath_len: l.multipath_len.intersect(r.multipath_len),
             tree_height: 1 + cmp::max(l.tree_height, r.tree_height),
         }
     }
@@ -735,6 +812,7 @@ impl ExtData {
             sat_data: SatData::fieldwise_max_opt(l.sat_data, sat_concat(l.dissat_data, r.sat_data)),
             dissat_data: None,
             timelock_info: TimelockInfo::combine_or(l.timelock_info, r.timelock_info),
+            multipath_len: l.multipath_len.intersect(r.multipath_len),
             tree_height: 1 + cmp::max(l.tree_height, r.tree_height),
         }
     }
@@ -766,6 +844,7 @@ impl ExtData {
                 r.dissat_data.map(with_0),
             ),
             timelock_info: TimelockInfo::combine_or(l.timelock_info, r.timelock_info),
+            multipath_len: l.multipath_len.intersect(r.multipath_len),
             tree_height: 1 + cmp::max(l.tree_height, r.tree_height),
         }
     }
@@ -795,6 +874,10 @@ impl ExtData {
                 TimelockInfo::combine_and(a.timelock_info, b.timelock_info),
                 c.timelock_info,
             ),
+            multipath_len: a
+                .multipath_len
+                .intersect(b.multipath_len)
+                .intersect(c.multipath_len),
             tree_height: 1 + cmp::max(a.tree_height, cmp::max(b.tree_height, c.tree_height)),
         }
     }
@@ -818,12 +901,14 @@ impl ExtData {
             max_exec_stack_count: 0,
             max_exec_op_count: 0,
         });
+        let mut multipath_len = MultipathLen::NoMultipathKeys;
         for i in 0..n {
             let sub = sub_ck(i);
 
             pk_cost += sub.pk_cost;
             static_ops += sub.static_ops;
             timelocks.push(sub.timelock_info);
+            multipath_len = multipath_len.intersect(sub.multipath_len);
 
             // The thresh is dissatifiable iff all sub policies are dissatifiable.
             // If it can be dissatisfied this is done by just dissatisfying everything in order.
@@ -928,6 +1013,7 @@ impl ExtData {
             sat_data,
             dissat_data,
             timelock_info: TimelockInfo::combine_threshold(k, timelocks),
+            multipath_len,
             tree_height: max_child_height + 1,
         }
     }

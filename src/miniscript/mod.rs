@@ -55,6 +55,7 @@ mod private {
     use core::marker::PhantomData;
 
     use super::limits::{MAX_PUBKEYS_IN_CHECKSIGADD, MAX_PUBKEYS_PER_MULTISIG};
+    use super::types::extra_props::MultipathLen;
     use super::types::{self, ExtData, Type};
     use super::{ConstructError, ScriptContext};
     use crate::iter::TreeLike as _;
@@ -392,22 +393,12 @@ mod private {
             if !params.allow_mixed_time_locks && self.has_mixed_timelocks() {
                 return Err(ValidationError::MixedTimeLocks);
             }
+            if !params.allow_inconsistent_multipath_keys {
+                if let MultipathLen::Inconsistent(len1, len2) = self.ext.multipath_len {
+                    return Err(ValidationError::MultipathKeyLenMismatch { len1, len2 });
+                }
+            }
 
-            let mut multipath_len = None;
-            let mut multipath_check = |pk: &Pk| {
-                if params.allow_inconsistent_multipath_keys {
-                    return Ok(());
-                }
-                match (multipath_len, pk.num_der_paths()) {
-                    (_, 0) | (_, 1) => {}
-                    (None, n) => multipath_len = Some(n),
-                    (Some(x), y) if x == y => { /* ok */ }
-                    (Some(x), y) => {
-                        return Err(ValidationError::MultipathKeyLenMismatch { len1: x, len2: y })
-                    }
-                }
-                Ok(())
-            };
             for ms in self.iter() {
                 match ms.node {
                     Terminal::DupIf(..) if !params.allow_dup_if => {
@@ -419,7 +410,6 @@ mod private {
                         }
                         for key in thresh.iter() {
                             params.validate_pk(key)?;
-                            multipath_check(key)?;
                         }
                     }
                     Terminal::MultiA(ref thresh) => {
@@ -428,7 +418,6 @@ mod private {
                         }
                         for key in thresh.iter() {
                             params.validate_pk(key)?;
-                            multipath_check(key)?;
                         }
                     }
                     Terminal::OrI(..) if !params.allow_or_i => {
@@ -439,7 +428,6 @@ mod private {
                     }
                     Terminal::PkK(ref pk) | Terminal::PkH(ref pk) => {
                         params.validate_pk(pk)?;
-                        multipath_check(pk)?;
                     }
                     _ => {}
                 }
