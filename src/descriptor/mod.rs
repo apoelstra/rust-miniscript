@@ -19,9 +19,7 @@ use bitcoin::hashes::{hash160, ripemd160, sha256};
 use bitcoin::{
     secp256k1, Address, Network, Script, ScriptBuf, TxIn, Weight, Witness, WitnessVersion,
 };
-use sync::Arc;
 
-use crate::miniscript::decode::Terminal;
 use crate::miniscript::limits::MAX_PUBKEYS_PER_MULTISIG;
 use crate::miniscript::{satisfy, Legacy, Miniscript, ScriptContext as _, Segwitv0, Tap};
 use crate::plan::{AssetProvider, Plan};
@@ -156,12 +154,9 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
 
     /// Create a new pk descriptor
     pub fn new_pk(pk: Pk) -> Self {
-        // roundabout way to constuct `c:pk_k(pk)`
-        let ms: Miniscript<Pk, BareCtx> = Miniscript::from_ast(Terminal::Check(Arc::new(
-            Miniscript::from_ast(Terminal::PkK(pk)).expect("Type check cannot fail"),
-        )))
-        .expect("Type check cannot fail");
-        Descriptor::Bare(Bare::new(ms).expect("Context checks cannot fail for p2pk"))
+        Descriptor::Bare(
+            Bare::new(Miniscript::pk(pk)).expect("Context checks cannot fail for p2pk"),
+        )
     }
 
     /// Create a new PkH descriptor
