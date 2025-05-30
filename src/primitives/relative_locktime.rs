@@ -7,7 +7,7 @@ use core::{cmp, convert, fmt};
 use bitcoin::{relative, Sequence};
 
 /// Error parsing an absolute locktime.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct RelLockTimeError {
     value: u32,
 }

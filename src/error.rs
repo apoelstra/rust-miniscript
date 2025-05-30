@@ -8,7 +8,7 @@ use core::fmt;
 use std::error;
 
 use crate::blanket_traits::StaticDebugAndDisplay;
-use crate::prelude::{String, Vec};
+use crate::prelude::{String, ToString as _, Vec};
 use crate::primitives::absolute_locktime::AbsLockTimeError;
 use crate::primitives::relative_locktime::RelLockTimeError;
 use crate::Box;
@@ -33,6 +33,47 @@ pub enum ParseError {
     /// Error parsing a string into an expression tree.
     Tree(crate::ParseTreeError),
 }
+
+impl PartialEq for ParseError {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::AbsoluteLockTime(a), Self::AbsoluteLockTime(b)) => a == b,
+            (Self::RelativeLockTime(a), Self::RelativeLockTime(b)) => a == b,
+            (Self::Num(a), Self::Num(b)) => a == b,
+            (Self::FromStr(a), Self::FromStr(b)) => {
+                // We cannot compare a `Box<dyn StaticDebugAndDisplay>`. In fact, we cannot compare
+                // any Box<dyn> objects because `PartialEq` is not object-safe. We *could* define
+                // our own object-safe variant of `PartialEq`, impl it for all `T: PartialEq`, and
+                // put a bound on `StaticDebugAndDisplay`. This seems complex and onerous.
+                //
+                // See <https://stackoverflow.com/questions/25339603/how-to-test-for-equality-between-trait-objects>
+                //
+                // Instead we just compare the string representation of the errors, which is slow
+                // but simple to implement and understand. It is also correct both in a philosophical
+                // sense, in that "the Debug and Display impls" are the only things that characterize
+                // these errors once they're turned into `Box<dyn StaticDebugAndDisplay>`...and true
+                // in a practical sense that no sane error type will nondeterministic formatting which
+                // would lead to false negatives, and any decent error type will have rich enough debug
+                // output to avoid false positives.
+                a.to_string() == b.to_string() && format!("{:?}", a) == format!("{:?}", b)
+            }
+            (Self::Threshold(a), Self::Threshold(b)) => a == b,
+            (Self::Tree(a), Self::Tree(b)) => a == b,
+            (_, _) => {
+                debug_assert_ne!(
+                    core::mem::discriminant(self),
+                    core::mem::discriminant(other),
+                    "appears a case in ParseError::eq was missed",
+                );
+                false
+            }
+        }
+    }
+}
+// This trait is claiming that every `ParseError` will satisfy x == x for all x.
+// This is plausibly false for some kinds of FromStr errors, but see the big
+// block comment in PartialEq for why this seems very unlikely.
+impl Eq for ParseError {}
 
 impl ParseError {
     /// Boxes a `FromStr` error for a `Pk` (or associated types) into a `ParseError`

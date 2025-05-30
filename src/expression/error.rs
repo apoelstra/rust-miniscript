@@ -9,7 +9,7 @@ use crate::prelude::*;
 use crate::ThresholdError;
 
 /// An error parsing an expression tree.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ParseTreeError {
     /// Error validating the checksum or character set.
     Checksum(checksum::Error),

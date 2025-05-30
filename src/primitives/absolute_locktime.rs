@@ -17,7 +17,7 @@ pub const MAX_ABSOLUTE_LOCKTIME: u32 = 0x7FFF_FFFF;
 pub const MIN_ABSOLUTE_LOCKTIME: u32 = 1;
 
 /// Error parsing an absolute locktime.
-#[derive(Debug, PartialEq)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 pub struct AbsLockTimeError {
     value: u32,
 }

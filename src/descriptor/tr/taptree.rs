@@ -11,7 +11,7 @@ use crate::sync::Arc;
 use crate::{Miniscript, MiniscriptKey, Threshold, ToPublicKey, ValidationError};
 
 /// Tried to construct Taproot tree which was too deep.
-#[derive(PartialEq, Eq, Debug)]
+#[derive(Clone, PartialEq, Eq, Debug)]
 #[non_exhaustive]
 pub struct TapTreeDepthError;
 

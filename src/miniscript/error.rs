@@ -7,7 +7,7 @@ use core::fmt;
 use crate::WithSpan;
 
 /// An error constructing a Miniscript.
-#[derive(Debug, PartialEq, Eq)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum ConstructError {
     /// Typechecking failed.
     ///
@@ -64,7 +64,7 @@ impl std::error::Error for ConstructError {
 /// There are two types of errors: parsing errors (where the expression tree
 /// was malformed or a name was invalid) and construction errors (where the tree
 /// was well-formed but the Miniscript fails a consistency or type check.
-#[derive(Debug)]
+#[derive(PartialEq, Eq, Debug)]
 pub enum ParseMiniscriptError {
     /// A parsing error.
     Parse(crate::ParseError),
