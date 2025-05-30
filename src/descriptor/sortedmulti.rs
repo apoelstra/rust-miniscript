@@ -107,8 +107,13 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> ForEachKey<Pk> for SortedMultiVec<Pk
 }
 
 impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
-    /// Create Terminal::Multi containing sorted pubkeys
-    pub fn sorted_node(&self) -> Terminal<Pk, Ctx>
+    /// Sort the keys and return the internal [`Threshold`] object.
+    ///
+    /// This function computes the sorted list and its return value should be
+    /// cached if it is needed multiple times. (Because the sorting is only
+    /// possible when `Pk` implements the [`ToPublicKey`] trait, it cannot
+    /// be done when `self` is constructed.)
+    pub fn sorted_threshold(&self) -> Threshold<Pk, MAX_PUBKEYS_PER_MULTISIG>
     where
         Pk: ToPublicKey,
     {
@@ -121,7 +126,19 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
                 .partial_cmp(&b.to_public_key().inner.serialize())
                 .unwrap()
         });
-        Terminal::Multi(thresh)
+        thresh
+    }
+
+    #[deprecated(
+        since = "TBD",
+        note = "Use Self::sorted_threshold followed by Terminal::Multi or Miniscript::multi"
+    )]
+    /// Create Terminal::Multi containing sorted pubkeys
+    pub fn sorted_node(&self) -> Terminal<Pk, Ctx>
+    where
+        Pk: ToPublicKey,
+    {
+        Terminal::Multi(self.sorted_threshold())
     }
 
     /// Encode as a Bitcoin script
@@ -129,9 +146,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
     where
         Pk: ToPublicKey,
     {
-        self.sorted_node()
-            .encode(script::Builder::new())
-            .into_script()
+        Miniscript::<_, Ctx>::multi(self.sorted_threshold()).encode()
     }
 
     /// Attempt to produce a satisfying witness for the
@@ -141,7 +156,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
         Pk: ToPublicKey,
         S: Satisfier<Pk>,
     {
-        let ms = Miniscript::from_ast(self.sorted_node()).expect("Multi node typecheck");
+        let ms = Miniscript::<_, Ctx>::multi(self.sorted_threshold());
         ms.satisfy(satisfier)
     }
 
@@ -151,7 +166,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
         Pk: ToPublicKey,
         P: AssetProvider<Pk>,
     {
-        let ms = Miniscript::from_ast(self.sorted_node()).expect("Multi node typecheck");
+        let ms = Miniscript::<_, Ctx>::multi(self.sorted_threshold());
         ms.build_template(provider)
     }
 

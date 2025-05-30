@@ -168,8 +168,8 @@ pub fn test_desc_satisfy(
 
             if let Some(internal_keypair) = internal_keypair {
                 // ---------------------- Tr key spend --------------------
-                let internal_keypair = internal_keypair
-                    .tap_tweak(&secp, tr.spend_info().merkle_root());
+                let internal_keypair =
+                    internal_keypair.tap_tweak(&secp, tr.spend_info().merkle_root());
                 let sighash_msg = sighash_cache
                     .taproot_key_spend_signature_hash(0, &prevouts, sighash_type)
                     .unwrap();
@@ -187,7 +187,8 @@ pub fn test_desc_satisfy(
             let x_only_keypairs_reqd: Vec<(secp256k1::Keypair, TapLeafHash)> = tr
                 .leaves()
                 .flat_map(|leaf| {
-                    let leaf_hash = TapLeafHash::from_script(&leaf.compute_script(), LeafVersion::TapScript);
+                    let leaf_hash =
+                        TapLeafHash::from_script(&leaf.compute_script(), LeafVersion::TapScript);
                     leaf.miniscript().iter_pk().filter_map(move |pk| {
                         let i = x_only_pks.iter().position(|&x| x.to_public_key() == pk);
                         i.map(|idx| (xonly_keypairs[idx], leaf_hash))
@@ -219,7 +220,7 @@ pub fn test_desc_satisfy(
                 Descriptor::Sh(sh) => match sh.as_inner() {
                     miniscript::descriptor::ShInner::Wsh(wsh) => match wsh.as_inner() {
                         miniscript::descriptor::WshInner::SortedMulti(ref smv) => {
-                            let ms = Miniscript::from_ast(smv.sorted_node()).unwrap();
+                            let ms = Miniscript::multi(smv.sorted_threshold());
                             find_sks_ms(&ms, testdata)
                         }
                         miniscript::descriptor::WshInner::Ms(ref ms) => find_sks_ms(ms, testdata),
@@ -228,7 +229,7 @@ pub fn test_desc_satisfy(
                         find_sk_single_key(*pk.as_inner(), testdata)
                     }
                     miniscript::descriptor::ShInner::SortedMulti(smv) => {
-                        let ms = Miniscript::from_ast(smv.sorted_node()).unwrap();
+                        let ms = Miniscript::multi(smv.sorted_threshold());
                         find_sks_ms(&ms, testdata)
                     }
                     miniscript::descriptor::ShInner::Ms(ms) => find_sks_ms(ms, testdata),
