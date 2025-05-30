@@ -295,7 +295,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> TerminalStack<Pk, Ctx> {
     /// Wrapper around self.0.push()
     fn push(&mut self, ms: Miniscript<Pk, Ctx>) { self.0.push(ms) }
 
-    ///reduce, type check and push a 0-arg node
+    /// reduce, type check and push a 0-arg node
     fn reduce0(&mut self, ms: Terminal<Pk, Ctx>) -> Result<(), Error> {
         let ms = Miniscript::from_ast(ms).map_err(Error::Construct)?;
         self.0.push(ms);
@@ -730,7 +730,7 @@ impl error::Error for KeyError {
 #[derive(Debug)]
 pub enum Error {
     /// Error constructing a Miniscript.
-    Construct(super::ConstructError),
+    Construct(crate::WithSpan<super::ConstructError>),
     /// Error lexing a Script into Miniscript tokens.
     Lex(super::lex::Error),
     /// PubKey invalid under current context

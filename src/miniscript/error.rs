@@ -14,7 +14,7 @@ pub enum ConstructError {
     /// These errors indicate that the Miniscript was not well-formed,
     /// and if constructed would not have any sensible semantics in the
     /// Bitcoin Script interpreter.
-    TypeCheck(WithSpan<crate::miniscript::types::Error>),
+    TypeCheck(crate::miniscript::types::Error),
     /// Validation of the constructed object failed.
     ///
     /// These errors indicate failed checks that are mostly configurable.
@@ -71,7 +71,7 @@ pub enum ParseMiniscriptError {
     /// Tried to construct a Taproot tree which was too deep.
     TapTreeDepthError(crate::descriptor::TapTreeDepthError),
     /// A validation error.
-    Construct(ConstructError),
+    Construct(WithSpan<ConstructError>),
 }
 
 // Lots of sub-errors of ParseError, do do a blanket From from them
@@ -87,17 +87,19 @@ impl From<crate::descriptor::TapTreeDepthError> for ParseMiniscriptError {
     fn from(e: crate::descriptor::TapTreeDepthError) -> Self { Self::TapTreeDepthError(e) }
 }
 
-impl From<ConstructError> for ParseMiniscriptError {
-    fn from(e: ConstructError) -> Self { Self::Construct(e) }
+impl From<WithSpan<ConstructError>> for ParseMiniscriptError {
+    fn from(e: WithSpan<ConstructError>) -> Self { Self::Construct(e) }
 }
 
 impl From<crate::ValidationError> for ParseMiniscriptError {
-    fn from(e: crate::ValidationError) -> Self { Self::Construct(ConstructError::Validation(e)) }
+    fn from(e: crate::ValidationError) -> Self {
+        Self::Construct(WithSpan::new(ConstructError::Validation(e)))
+    }
 }
 
-impl From<WithSpan<crate::miniscript::types::Error>> for ParseMiniscriptError {
-    fn from(e: WithSpan<crate::miniscript::types::Error>) -> Self {
-        Self::Construct(ConstructError::TypeCheck(e))
+impl From<crate::miniscript::types::Error> for ParseMiniscriptError {
+    fn from(e: crate::miniscript::types::Error) -> Self {
+        Self::Construct(WithSpan::new(ConstructError::TypeCheck(e)))
     }
 }
 

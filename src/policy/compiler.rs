@@ -535,7 +535,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
         ast: Terminal<Pk, Ctx>,
         l: &AstElemExt<Pk, Ctx>,
         r: &AstElemExt<Pk, Ctx>,
-    ) -> Result<AstElemExt<Pk, Ctx>, crate::WithSpan<types::Error>> {
+    ) -> Result<AstElemExt<Pk, Ctx>, types::Error> {
         let lookup_ext = |n| match n {
             0 => l.comp_ext_data,
             1 => r.comp_ext_data,
@@ -557,7 +557,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
         a: &AstElemExt<Pk, Ctx>,
         b: &AstElemExt<Pk, Ctx>,
         c: &AstElemExt<Pk, Ctx>,
-    ) -> Result<AstElemExt<Pk, Ctx>, crate::WithSpan<types::Error>> {
+    ) -> Result<AstElemExt<Pk, Ctx>, types::Error> {
         let lookup_ext = |n| match n {
             0 => a.comp_ext_data,
             1 => b.comp_ext_data,

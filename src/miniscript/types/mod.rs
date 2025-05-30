@@ -9,15 +9,13 @@ pub mod correctness;
 pub mod extra_props;
 pub mod malleability;
 
-#[cfg(all(not(feature = "std"), not(test)))]
-use alloc::string::ToString as _;
 use core::fmt;
 
 pub use self::correctness::{Base, Correctness, Input};
 pub use self::extra_props::ExtData;
 pub use self::malleability::{Dissat, Malleability};
 use super::ScriptContext;
-use crate::{MiniscriptKey, Terminal, WithSpan};
+use crate::{MiniscriptKey, Terminal};
 
 /// Detailed type of a typechecker error
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug)]
@@ -414,15 +412,11 @@ impl Type {
 impl Type {
     /// Compute the type of a fragment assuming all the children of
     /// Miniscript have been computed already.
-    pub fn type_check<Pk, Ctx>(fragment: &Terminal<Pk, Ctx>) -> Result<Self, WithSpan<Error>>
+    pub fn type_check<Pk, Ctx>(fragment: &Terminal<Pk, Ctx>) -> Result<Self, Error>
     where
         Pk: MiniscriptKey,
         Ctx: ScriptContext,
     {
-        let wrap_err = |result: Result<Self, Error>| {
-            result.map_err(|kind| WithSpan::new(kind).with_string(fragment.to_string()))
-        };
-
         let ret = match *fragment {
             Terminal::True => Ok(Self::TRUE),
             Terminal::False => Ok(Self::FALSE),
@@ -436,51 +430,51 @@ impl Type {
             Terminal::Hash256(..) => Ok(Self::hash()),
             Terminal::Ripemd160(..) => Ok(Self::hash()),
             Terminal::Hash160(..) => Ok(Self::hash()),
-            Terminal::Alt(ref sub) => wrap_err(Self::cast_alt(sub.ty)),
-            Terminal::Swap(ref sub) => wrap_err(Self::cast_swap(sub.ty)),
-            Terminal::Check(ref sub) => wrap_err(Self::cast_check(sub.ty)),
-            Terminal::DupIf(ref sub) => wrap_err(Self::cast_dupif(sub.ty)),
-            Terminal::Verify(ref sub) => wrap_err(Self::cast_verify(sub.ty)),
-            Terminal::NonZero(ref sub) => wrap_err(Self::cast_nonzero(sub.ty)),
-            Terminal::ZeroNotEqual(ref sub) => wrap_err(Self::cast_zeronotequal(sub.ty)),
+            Terminal::Alt(ref sub) => Self::cast_alt(sub.ty),
+            Terminal::Swap(ref sub) => Self::cast_swap(sub.ty),
+            Terminal::Check(ref sub) => Self::cast_check(sub.ty),
+            Terminal::DupIf(ref sub) => Self::cast_dupif(sub.ty),
+            Terminal::Verify(ref sub) => Self::cast_verify(sub.ty),
+            Terminal::NonZero(ref sub) => Self::cast_nonzero(sub.ty),
+            Terminal::ZeroNotEqual(ref sub) => Self::cast_zeronotequal(sub.ty),
             Terminal::AndB(ref l, ref r) => {
                 let ltype = l.ty;
                 let rtype = r.ty;
-                wrap_err(Self::and_b(ltype, rtype))
+                Self::and_b(ltype, rtype)
             }
             Terminal::AndV(ref l, ref r) => {
                 let ltype = l.ty;
                 let rtype = r.ty;
-                wrap_err(Self::and_v(ltype, rtype))
+                Self::and_v(ltype, rtype)
             }
             Terminal::OrB(ref l, ref r) => {
                 let ltype = l.ty;
                 let rtype = r.ty;
-                wrap_err(Self::or_b(ltype, rtype))
+                Self::or_b(ltype, rtype)
             }
             Terminal::OrD(ref l, ref r) => {
                 let ltype = l.ty;
                 let rtype = r.ty;
-                wrap_err(Self::or_d(ltype, rtype))
+                Self::or_d(ltype, rtype)
             }
             Terminal::OrC(ref l, ref r) => {
                 let ltype = l.ty;
                 let rtype = r.ty;
-                wrap_err(Self::or_c(ltype, rtype))
+                Self::or_c(ltype, rtype)
             }
             Terminal::OrI(ref l, ref r) => {
                 let ltype = l.ty;
                 let rtype = r.ty;
-                wrap_err(Self::or_i(ltype, rtype))
+                Self::or_i(ltype, rtype)
             }
             Terminal::AndOr(ref a, ref b, ref c) => {
                 let atype = a.ty;
                 let btype = b.ty;
                 let ctype = c.ty;
-                wrap_err(Self::and_or(atype, btype, ctype))
+                Self::and_or(atype, btype, ctype)
             }
             Terminal::Thresh(ref thresh) => {
-                wrap_err(Self::threshold(thresh.k(), thresh.iter().map(|ms| &ms.ty)))
+                Self::threshold(thresh.k(), thresh.iter().map(|ms| &ms.ty))
             }
         };
         if let Ok(ref ret) = ret {
