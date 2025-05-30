@@ -12,7 +12,7 @@ use std::error;
 use sync::Arc;
 
 use crate::miniscript::context::SigType;
-use crate::miniscript::types::{self, ErrorKind, ExtData, Type};
+use crate::miniscript::types::{self, ExtData, Type};
 use crate::miniscript::ScriptContext;
 use crate::policy::Concrete;
 use crate::prelude::*;
@@ -535,7 +535,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
         ast: Terminal<Pk, Ctx>,
         l: &AstElemExt<Pk, Ctx>,
         r: &AstElemExt<Pk, Ctx>,
-    ) -> Result<AstElemExt<Pk, Ctx>, types::Error> {
+    ) -> Result<AstElemExt<Pk, Ctx>, crate::WithSpan<types::Error>> {
         let lookup_ext = |n| match n {
             0 => l.comp_ext_data,
             1 => r.comp_ext_data,
@@ -557,7 +557,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
         a: &AstElemExt<Pk, Ctx>,
         b: &AstElemExt<Pk, Ctx>,
         c: &AstElemExt<Pk, Ctx>,
-    ) -> Result<AstElemExt<Pk, Ctx>, types::Error> {
+    ) -> Result<AstElemExt<Pk, Ctx>, crate::WithSpan<types::Error>> {
         let lookup_ext = |n| match n {
             0 => a.comp_ext_data,
             1 => b.comp_ext_data,
@@ -581,13 +581,13 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
 #[derive(Copy, Clone)]
 struct Cast<Pk: MiniscriptKey, Ctx: ScriptContext> {
     node: fn(Arc<Miniscript<Pk, Ctx>>) -> Terminal<Pk, Ctx>,
-    ast_type: fn(types::Type) -> Result<types::Type, ErrorKind>,
+    ast_type: fn(types::Type) -> Result<types::Type, types::Error>,
     ext_data: fn(types::ExtData) -> types::ExtData,
     comp_ext_data: fn(CompilerExtData) -> CompilerExtData,
 }
 
 impl<Pk: MiniscriptKey, Ctx: ScriptContext> Cast<Pk, Ctx> {
-    fn cast(&self, ast: &AstElemExt<Pk, Ctx>) -> Result<AstElemExt<Pk, Ctx>, ErrorKind> {
+    fn cast(&self, ast: &AstElemExt<Pk, Ctx>) -> Result<AstElemExt<Pk, Ctx>, types::Error> {
         Ok(AstElemExt {
             ms: Arc::new(Miniscript::from_components_unchecked(
                 (self.node)(Arc::clone(&ast.ms)),

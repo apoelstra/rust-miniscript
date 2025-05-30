@@ -4,6 +4,8 @@
 
 use core::fmt;
 
+use crate::WithSpan;
+
 /// An error constructing a Miniscript.
 #[derive(Debug, PartialEq, Eq)]
 pub enum ConstructError {
@@ -12,7 +14,7 @@ pub enum ConstructError {
     /// These errors indicate that the Miniscript was not well-formed,
     /// and if constructed would not have any sensible semantics in the
     /// Bitcoin Script interpreter.
-    TypeCheck(crate::miniscript::types::Error),
+    TypeCheck(WithSpan<crate::miniscript::types::Error>),
     /// Validation of the constructed object failed.
     ///
     /// These errors indicate failed checks that are mostly configurable.
@@ -93,8 +95,8 @@ impl From<crate::ValidationError> for ParseMiniscriptError {
     fn from(e: crate::ValidationError) -> Self { Self::Construct(ConstructError::Validation(e)) }
 }
 
-impl From<crate::miniscript::types::Error> for ParseMiniscriptError {
-    fn from(e: crate::miniscript::types::Error) -> Self {
+impl From<WithSpan<crate::miniscript::types::Error>> for ParseMiniscriptError {
+    fn from(e: WithSpan<crate::miniscript::types::Error>) -> Self {
         Self::Construct(ConstructError::TypeCheck(e))
     }
 }
