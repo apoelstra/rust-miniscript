@@ -291,11 +291,7 @@ impl Tr<DefiniteDescriptorKey> {
 impl<Pk: FromStrKey> core::str::FromStr for Tr<Pk> {
     type Err = ParseMiniscriptError;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let expr_tree = expression::Tree::from_str(s)?;
-        // FIXME using CONSENSUS here but should use SANE; will fix in next commit
-        Self::from_tree(expr_tree.root(), &Tap::CONSENSUS)
-    }
+    fn from_str(s: &str) -> Result<Self, Self::Err> { Self::from_str_with_params(s, &Tap::SANE) }
 }
 
 impl<Pk: FromStrKey> Tr<Pk> {
@@ -345,6 +341,18 @@ impl<Pk: FromStrKey> Tr<Pk> {
             }
         }
         Ok(Tr::new(internal_key, Some(tree_builder.finalize()))?)
+    }
+
+    /// Parse a string as a `tr` descriptor, enforcing the provided set of parameters.
+    ///
+    /// Consensus rules for Taproot will be enforced even if `params` is set not to
+    /// enforce them.
+    pub fn from_str_with_params(
+        s: &str,
+        params: &ValidationParams,
+    ) -> Result<Self, ParseMiniscriptError> {
+        let expr_tree = expression::Tree::from_str(s)?;
+        Self::from_tree(expr_tree.root(), params)
     }
 }
 

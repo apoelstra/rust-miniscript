@@ -357,6 +357,8 @@ impl<'sp, Pk: MiniscriptKey> TrSpendInfoIterItem<'sp, Pk> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::descriptor::Tr;
+    use crate::ScriptContext;
 
     #[derive(PartialEq, Eq, Debug)]
     struct ExpectedTree {
@@ -642,9 +644,7 @@ mod tests {
     #[test]
     fn spend_info_fixed_vectors() {
         for (s, tree, leaves) in test_cases() {
-            let tr = s
-                .parse::<crate::descriptor::Tr<bitcoin::PublicKey>>()
-                .unwrap();
+            let tr = Tr::<bitcoin::PublicKey>::from_str_with_params(&s, &Tap::CONSENSUS).unwrap();
             let spend_info = tr.spend_info();
 
             assert_eq!(

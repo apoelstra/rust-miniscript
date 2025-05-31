@@ -21,7 +21,7 @@ use bitcoin::{
 };
 
 use crate::miniscript::limits::MAX_PUBKEYS_PER_MULTISIG;
-use crate::miniscript::{satisfy, Legacy, Miniscript, ScriptContext as _, Segwitv0, Tap};
+use crate::miniscript::{satisfy, Legacy, Miniscript, Segwitv0};
 use crate::plan::{AssetProvider, Plan};
 use crate::prelude::*;
 use crate::{
@@ -1001,13 +1001,7 @@ impl<Pk: FromStrKey> FromStr for Descriptor<Pk> {
     type Err = ParseMiniscriptError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let top = expression::Tree::from_str(s)?;
-        let ret = Self::from_tree(top.root(), &ValidationParams::SANE)?;
-        if let Descriptor::Tr(ref inner) = ret {
-            for item in inner.leaves() {
-                item.miniscript().validate(&Tap::SANE)?;
-            }
-        }
-        Ok(ret)
+        Self::from_tree(top.root(), &ValidationParams::SANE)
     }
 }
 
