@@ -172,7 +172,7 @@ pub(super) fn from_txdata<'txin>(
                 Some(elem) => {
                     let miniscript =
                         script_from_stack_elem::<Segwitv0>(&elem).map_err(Error::Decode)?;
-                    let script = miniscript.encode();
+                    let script = elem.to_script();
                     let miniscript = miniscript.to_no_checks_ms();
                     let scripthash = sha256::Hash::hash(script.as_bytes());
                     if *spk == bitcoin::ScriptBuf::new_p2wsh(&scripthash.into()) {
@@ -193,7 +193,7 @@ pub(super) fn from_txdata<'txin>(
                 .map_err(|_| Error::XOnlyPublicKeyParseError)?;
             let has_annex = wit_stack
                 .last()
-                .and_then(|x| x.as_push().ok())
+                .map(stack::Element::as_push)
                 .map(|x| !x.is_empty() && x[0] == TAPROOT_ANNEX_PREFIX)
                 .unwrap_or(false);
             let has_annex = has_annex && (wit_stack.len() >= 2);
@@ -213,16 +213,16 @@ pub(super) fn from_txdata<'txin>(
                 _ => {
                     // Script spend
                     let ctrl_blk = wit_stack.pop().ok_or(Error::UnexpectedStackEnd)?;
-                    let ctrl_blk = ctrl_blk.as_push()?;
-                    let tap_script = wit_stack.pop().ok_or(Error::UnexpectedStackEnd)?;
+                    let ctrl_blk = ctrl_blk.as_push();
+                    let tap_script_elem = wit_stack.pop().ok_or(Error::UnexpectedStackEnd)?;
                     let ctrl_blk =
                         ControlBlock::decode(ctrl_blk).map_err(Error::ControlBlockParse)?;
                     let tap_script =
-                        script_from_stack_elem::<Tap>(&tap_script).map_err(Error::Decode)?;
+                        script_from_stack_elem::<Tap>(&tap_script_elem).map_err(Error::Decode)?;
                     let ms = tap_script.to_no_checks_ms();
                     // Creating new contexts is cheap
                     let secp = bitcoin::secp256k1::Secp256k1::verification_only();
-                    let tap_script = tap_script.encode();
+                    let tap_script = tap_script_elem.to_script();
                     if ctrl_blk.verify_taproot_commitment(&secp, output_key, &tap_script) {
                         Ok((
                             Inner::Script(ms, ScriptType::Tr),
@@ -285,8 +285,8 @@ pub(super) fn from_txdata<'txin>(
                                     // parse wsh with Segwitv0 context
                                     let miniscript = script_from_stack_elem::<Segwitv0>(&elem)
                                         .map_err(Error::Decode)?;
-                                    let script = miniscript.encode();
                                     let miniscript = miniscript.to_no_checks_ms();
+                                    let script = elem.to_script();
                                     let scripthash = sha256::Hash::hash(script.as_bytes());
                                     if slice
                                         == bitcoin::ScriptBuf::new_p2wsh(&scripthash.into())
@@ -308,7 +308,7 @@ pub(super) fn from_txdata<'txin>(
                 }
                 // normal p2sh parsed in Legacy context
                 let miniscript = script_from_stack_elem::<Legacy>(&elem).map_err(Error::Decode)?;
-                let script = miniscript.encode();
+                let script = elem.to_script();
                 let miniscript = miniscript.to_no_checks_ms();
                 if wit_stack.is_empty() {
                     let scripthash = hash160::Hash::hash(script.as_bytes());

@@ -61,12 +61,17 @@ impl<'txin> Element<'txin> {
     }
 
     // Get push element as slice, returning UnexpectedBool otherwise
-    pub(super) fn as_push(&self) -> Result<&[u8], Error> {
-        if let Element::Push(sl) = *self {
-            Ok(sl)
-        } else {
-            Err(Error::UnexpectedStackBoolean)
+    pub(super) fn as_push(&self) -> &[u8] {
+        match self {
+            Self::Push(sl) => sl,
+            Self::Dissatisfied => &[],
+            Self::Satisfied => &[1],
         }
+    }
+
+    /// Convenience method to convert push element to a Bitcoin script.
+    pub(super) fn to_script(self) -> bitcoin::ScriptBuf {
+        bitcoin::ScriptBuf::from(self.as_push().to_owned())
     }
 }
 
