@@ -3,14 +3,11 @@
 
 use core::{fmt, hash};
 
-use bitcoin::hashes::{hash160, ripemd160, sha256};
-
-use super::decode::ParseableKey;
 use crate::miniscript::limits::{
     MAX_OPS_PER_SCRIPT, MAX_SCRIPT_ELEMENT_SIZE, MAX_SCRIPT_SIZE, MAX_STACK_SIZE,
     MAX_STANDARD_P2WSH_SCRIPT_SIZE, MAX_STANDARD_P2WSH_STACK_ITEMS,
 };
-use crate::{hash256, Miniscript, MiniscriptKey, ValidationParams};
+use crate::{Miniscript, MiniscriptKey, ValidationParams};
 
 /// The ScriptContext for Miniscript.
 ///
@@ -20,15 +17,7 @@ use crate::{hash256, Miniscript, MiniscriptKey, ValidationParams};
 /// For example, disallowing uncompressed keys in Segwit context
 pub trait ScriptContext:
     fmt::Debug + Clone + Ord + PartialOrd + Eq + PartialEq + hash::Hash + private::Sealed + 'static
-where
-    Self::Key: MiniscriptKey<Sha256 = sha256::Hash>,
-    Self::Key: MiniscriptKey<Hash256 = hash256::Hash>,
-    Self::Key: MiniscriptKey<Ripemd160 = ripemd160::Hash>,
-    Self::Key: MiniscriptKey<Hash160 = hash160::Hash>,
 {
-    /// The consensus key associated with the type. Must be a parseable key
-    type Key: ParseableKey;
-
     /// The validation parameters enforcing consensus limits in this context, and
     /// nothing further.
     const CONSENSUS: ValidationParams;
@@ -75,8 +64,6 @@ pub enum SigType {
 pub enum Legacy {}
 
 impl ScriptContext for Legacy {
-    type Key = bitcoin::PublicKey;
-
     const CONSENSUS: ValidationParams = ValidationParams {
         allow_compressed_keys: true,
         allow_dup_if: false,
@@ -112,8 +99,6 @@ impl ScriptContext for Legacy {
 pub enum Segwitv0 {}
 
 impl ScriptContext for Segwitv0 {
-    type Key = bitcoin::PublicKey;
-
     const CONSENSUS: ValidationParams = ValidationParams {
         allow_compressed_keys: true,
         allow_uncompressed_keys: false,
@@ -145,8 +130,6 @@ impl ScriptContext for Segwitv0 {
 pub enum Tap {}
 
 impl ScriptContext for Tap {
-    type Key = bitcoin::secp256k1::XOnlyPublicKey;
-
     const CONSENSUS: ValidationParams = ValidationParams {
         allow_compressed_keys: false,
         allow_uncompressed_keys: false,
@@ -179,8 +162,6 @@ impl ScriptContext for Tap {
 pub enum BareCtx {}
 
 impl ScriptContext for BareCtx {
-    type Key = bitcoin::PublicKey;
-
     const CONSENSUS: ValidationParams = ValidationParams {
         allow_compressed_keys: true,
         allow_dup_if: false,
@@ -222,8 +203,6 @@ impl ScriptContext for BareCtx {
 pub enum NoChecks {}
 impl ScriptContext for NoChecks {
     // todo: When adding support for interpreter, we need a enum with all supported keys here
-    type Key = bitcoin::PublicKey;
-
     const CONSENSUS: ValidationParams = ValidationParams::MAX;
     const SANE: ValidationParams = ValidationParams::MAX;
 

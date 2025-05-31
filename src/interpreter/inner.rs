@@ -8,7 +8,7 @@ use bitcoin::Witness;
 use super::{stack, BitcoinKey, Error, Stack};
 use crate::miniscript::context::{NoChecks, ScriptContext, SigType};
 use crate::prelude::*;
-use crate::{BareCtx, Legacy, Miniscript, Segwitv0, Tap, ToPublicKey, Translator};
+use crate::{BareCtx, Legacy, Miniscript, Segwitv0, Tap, ToPublicKey};
 
 /// Attempts to parse a slice as a Bitcoin public key, checking compressedness
 /// if asked to, but otherwise dropping it
@@ -40,9 +40,12 @@ fn pk_from_stack_elem(
 // correct usage of x-only keys or multi_a
 fn script_from_stack_elem<Ctx: ScriptContext>(
     elem: &stack::Element<'_>,
-) -> Result<Miniscript<Ctx::Key, Ctx>, crate::miniscript::decode::Error> {
+) -> Result<Miniscript<BitcoinKey, NoChecks>, crate::miniscript::decode::Error> {
     match *elem {
-        stack::Element::Push(sl) => Miniscript::decode_consensus(bitcoin::Script::from_bytes(sl)),
+        stack::Element::Push(sl) => Miniscript::decode_with_validation_params(
+            bitcoin::Script::from_bytes(sl),
+            &Ctx::CONSENSUS,
+        ),
         stack::Element::Satisfied => Ok(Miniscript::TRUE),
         stack::Element::Dissatisfied => Ok(Miniscript::FALSE),
     }
@@ -173,7 +176,6 @@ pub(super) fn from_txdata<'txin>(
                     let miniscript =
                         script_from_stack_elem::<Segwitv0>(&elem).map_err(Error::Decode)?;
                     let script = elem.to_script();
-                    let miniscript = miniscript.to_no_checks_ms();
                     let scripthash = sha256::Hash::hash(script.as_bytes());
                     if *spk == bitcoin::ScriptBuf::new_p2wsh(&scripthash.into()) {
                         Ok((Inner::Script(miniscript, ScriptType::Wsh), wit_stack, Some(script)))
@@ -217,15 +219,14 @@ pub(super) fn from_txdata<'txin>(
                     let tap_script_elem = wit_stack.pop().ok_or(Error::UnexpectedStackEnd)?;
                     let ctrl_blk =
                         ControlBlock::decode(ctrl_blk).map_err(Error::ControlBlockParse)?;
-                    let tap_script =
+                    let tap_ms =
                         script_from_stack_elem::<Tap>(&tap_script_elem).map_err(Error::Decode)?;
-                    let ms = tap_script.to_no_checks_ms();
                     // Creating new contexts is cheap
                     let secp = bitcoin::secp256k1::Secp256k1::verification_only();
                     let tap_script = tap_script_elem.to_script();
                     if ctrl_blk.verify_taproot_commitment(&secp, output_key, &tap_script) {
                         Ok((
-                            Inner::Script(ms, ScriptType::Tr),
+                            Inner::Script(tap_ms, ScriptType::Tr),
                             wit_stack,
                             // Tapscript is returned as a "scriptcode". This is a hack, but avoids adding yet
                             // another enum just for taproot, and this function is not a publicly exposed API,
@@ -285,7 +286,6 @@ pub(super) fn from_txdata<'txin>(
                                     // parse wsh with Segwitv0 context
                                     let miniscript = script_from_stack_elem::<Segwitv0>(&elem)
                                         .map_err(Error::Decode)?;
-                                    let miniscript = miniscript.to_no_checks_ms();
                                     let script = elem.to_script();
                                     let scripthash = sha256::Hash::hash(script.as_bytes());
                                     if slice
@@ -309,7 +309,6 @@ pub(super) fn from_txdata<'txin>(
                 // normal p2sh parsed in Legacy context
                 let miniscript = script_from_stack_elem::<Legacy>(&elem).map_err(Error::Decode)?;
                 let script = elem.to_script();
-                let miniscript = miniscript.to_no_checks_ms();
                 if wit_stack.is_empty() {
                     let scripthash = hash160::Hash::hash(script.as_bytes());
                     if *spk == bitcoin::ScriptBuf::new_p2sh(&scripthash.into()) {
@@ -327,65 +326,15 @@ pub(super) fn from_txdata<'txin>(
     } else {
         if wit_stack.is_empty() {
             // Bare script parsed in BareCtx
-            let miniscript = Miniscript::<bitcoin::PublicKey, BareCtx>::decode_consensus(spk)
-                .map_err(Error::Decode)?;
-            let miniscript = miniscript.to_no_checks_ms();
+            let miniscript = Miniscript::<BitcoinKey, NoChecks>::decode_with_validation_params(
+                spk,
+                &BareCtx::CONSENSUS,
+            )
+            .map_err(Error::Decode)?;
             Ok((Inner::Script(miniscript, ScriptType::Bare), ssig_stack, Some(spk.to_owned())))
         } else {
             Err(Error::NonEmptyWitness)
         }
-    }
-}
-
-// Convert a miniscript from a well-defined context to a no checks context.
-// We need to parse insane scripts because these scripts are obtained from already
-// created transaction possibly already confirmed in a block.
-// In order to avoid code duplication for various contexts related interpreter checks,
-// we convert all the scripts to from a well-defined context to NoContexts.
-//
-// While executing Pkh(<hash>) in NoChecks, we need to pop a public key from stack
-// However, NoChecks context does not know whether to parse the key as 33 bytes or 32 bytes
-// While converting into NoChecks we store explicitly in TypedHash160 enum.
-pub(super) trait ToNoChecks {
-    fn to_no_checks_ms(&self) -> Miniscript<BitcoinKey, NoChecks>;
-}
-
-impl<Ctx: ScriptContext> ToNoChecks for Miniscript<bitcoin::PublicKey, Ctx> {
-    fn to_no_checks_ms(&self) -> Miniscript<BitcoinKey, NoChecks> {
-        struct TranslateFullPk;
-
-        impl Translator<bitcoin::PublicKey> for TranslateFullPk {
-            type TargetPk = BitcoinKey;
-            type Error = core::convert::Infallible;
-
-            fn pk(&mut self, pk: &bitcoin::PublicKey) -> Result<BitcoinKey, Self::Error> {
-                Ok(BitcoinKey::Fullkey(*pk))
-            }
-
-            translate_hash_clone!(bitcoin::PublicKey);
-        }
-
-        self.translate_pk_ctx(&mut TranslateFullPk)
-            .expect("Translation should succeed")
-    }
-}
-
-impl<Ctx: ScriptContext> ToNoChecks for Miniscript<bitcoin::key::XOnlyPublicKey, Ctx> {
-    fn to_no_checks_ms(&self) -> Miniscript<BitcoinKey, NoChecks> {
-        struct TranslateXOnlyPk;
-
-        impl Translator<bitcoin::key::XOnlyPublicKey> for TranslateXOnlyPk {
-            type TargetPk = BitcoinKey;
-            type Error = core::convert::Infallible;
-
-            fn pk(&mut self, pk: &bitcoin::key::XOnlyPublicKey) -> Result<BitcoinKey, Self::Error> {
-                Ok(BitcoinKey::XOnlyPublicKey(*pk))
-            }
-
-            translate_hash_clone!(bitcoin::key::XOnlyPublicKey);
-        }
-        self.translate_pk_ctx(&mut TranslateXOnlyPk)
-            .expect("Translation should succeed")
     }
 }
 
@@ -676,9 +625,11 @@ mod tests {
     }
 
     fn ms_inner_script(ms: &str) -> (Miniscript<BitcoinKey, NoChecks>, bitcoin::ScriptBuf) {
-        let ms = Miniscript::<bitcoin::PublicKey, Segwitv0>::from_str_insane(ms).unwrap();
-        let spk = ms.encode();
-        let miniscript = ms.to_no_checks_ms();
+        // Parse using full keys so we can re-encode.
+        let miniscript = Miniscript::<bitcoin::PublicKey, NoChecks>::from_str_insane(ms).unwrap();
+        let spk = miniscript.encode();
+        // Parse using BitcoinKeys so we can do equality checks.
+        let miniscript = Miniscript::<BitcoinKey, NoChecks>::from_str_insane(ms).unwrap();
         (miniscript, spk)
     }
 
@@ -760,10 +711,7 @@ mod tests {
         // with incorrect witness
         let wit = Witness::from_slice(&[spk.to_bytes()]);
         let err = from_txdata(&spk, &blank_script, &wit).unwrap_err();
-        assert_eq!(
-            err.to_string(),
-            "failed to parse Segwitv0 key: slice length should be 33 or 65 bytes, got: 32"
-        );
+        assert_eq!(err.to_string(), "malformed public key");
 
         // with correct witness
         let (inner, stack, script_code) =

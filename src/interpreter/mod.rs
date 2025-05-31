@@ -15,7 +15,7 @@ use bitcoin::hashes::{hash160, ripemd160, sha256, Hash};
 use bitcoin::{absolute, relative, secp256k1, sighash, taproot, Sequence, TxOut, Witness};
 
 use crate::miniscript::context::{NoChecks, SigType};
-use crate::miniscript::ScriptContext;
+use crate::miniscript::{decode, ScriptContext};
 use crate::prelude::*;
 use crate::{hash256, Descriptor, Miniscript, Terminal, ToPublicKey};
 
@@ -129,6 +129,36 @@ impl MiniscriptKey for BitcoinKey {
             Self::Fullkey(pk) => !pk.compressed,
             Self::XOnlyPublicKey(_) => false,
         }
+    }
+}
+
+impl FromStr for BitcoinKey {
+    type Err = secp256k1::Error;
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        if s.len() == 64 {
+            secp256k1::XOnlyPublicKey::from_str(s).map(Self::XOnlyPublicKey)
+        } else if s.len() == 66 {
+            secp256k1::PublicKey::from_str(s)
+                .map(bitcoin::PublicKey::new)
+                .map(Self::Fullkey)
+        } else {
+            secp256k1::PublicKey::from_str(s)
+                .map(bitcoin::PublicKey::new_uncompressed)
+                .map(Self::Fullkey)
+        }
+    }
+}
+
+impl decode::ParseableKey for BitcoinKey {
+    fn from_32_bytes(x: [u8; 32]) -> Result<Self, secp256k1::Error> {
+        secp256k1::XOnlyPublicKey::from_slice(&x).map(Self::XOnlyPublicKey)
+    }
+    fn from_33_bytes(x: [u8; 33]) -> Result<Self, secp256k1::Error> {
+        bitcoin::PublicKey::from_33_bytes(x).map(Self::Fullkey)
+    }
+
+    fn from_65_bytes(x: [u8; 65]) -> Result<Self, secp256k1::Error> {
+        bitcoin::PublicKey::from_65_bytes(x).map(Self::Fullkey)
     }
 }
 
@@ -1055,7 +1085,6 @@ mod tests {
 
     use bitcoin::secp256k1::Secp256k1;
 
-    use super::inner::ToNoChecks;
     use super::*;
 
     #[allow(clippy::type_complexity)]
@@ -1555,16 +1584,7 @@ mod tests {
         assert!(multi_a_error.is_err());
     }
 
-    // By design there is no support for parse a miniscript with BitcoinKey
-    // because it does not implement FromStr
-    fn no_checks_ms(ms: &str) -> Miniscript<BitcoinKey, NoChecks> {
-        // Parsing should allow raw hashes in the interpreter
-        let elem: Miniscript<bitcoin::PublicKey, NoChecks> = ms.parse().unwrap();
-        elem.to_no_checks_ms()
-    }
+    fn no_checks_ms(ms: &str) -> Miniscript<BitcoinKey, NoChecks> { ms.parse().unwrap() }
 
-    fn x_only_no_checks_ms(ms: &str) -> Miniscript<BitcoinKey, NoChecks> {
-        let elem: Miniscript<bitcoin::XOnlyPublicKey, NoChecks> = ms.parse().unwrap();
-        elem.to_no_checks_ms()
-    }
+    fn x_only_no_checks_ms(ms: &str) -> Miniscript<BitcoinKey, NoChecks> { ms.parse().unwrap() }
 }

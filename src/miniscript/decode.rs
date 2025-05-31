@@ -6,10 +6,9 @@
 //!
 
 use core::{fmt, mem};
-#[cfg(feature = "std")]
-use std::error;
 
 use bitcoin::hashes::{hash160, ripemd160, sha256, Hash};
+use bitcoin::secp256k1;
 use sync::Arc;
 
 use crate::iter::TreeLike;
@@ -21,36 +20,50 @@ use crate::primitives::threshold;
 #[cfg(doc)]
 use crate::Descriptor;
 use crate::{
-    hash256, AbsLockTime, Miniscript, MiniscriptKey, RelLockTime, Threshold, ToPublicKey,
-    ValidationParams,
+    hash256, AbsLockTime, Miniscript, MiniscriptKey, RelLockTime, Threshold, ValidationParams,
 };
 
-/// Trait for parsing keys from byte slices
-pub trait ParseableKey: Sized + ToPublicKey + private::Sealed {
-    /// Parse a key from slice
-    fn from_slice(sl: &[u8]) -> Result<Self, KeyError>;
+/// A public key which can be parsed from a slice embedded in a script.
+pub trait ParseableKey:
+    MiniscriptKey<
+    Sha256 = sha256::Hash,
+    Hash256 = hash256::Hash,
+    Ripemd160 = ripemd160::Hash,
+    Hash160 = hash160::Hash,
+>
+{
+    /// Parse the key from a 32-byte array.
+    fn from_32_bytes(x: [u8; 32]) -> Result<Self, secp256k1::Error>;
+    /// Parse the key from a 33-byte array.
+    fn from_33_bytes(x: [u8; 33]) -> Result<Self, secp256k1::Error>;
+    /// Parse the key from a 65-byte array.
+    fn from_65_bytes(x: [u8; 65]) -> Result<Self, secp256k1::Error>;
 }
 
 impl ParseableKey for bitcoin::PublicKey {
-    fn from_slice(sl: &[u8]) -> Result<Self, KeyError> {
-        Self::from_slice(sl).map_err(KeyError::Full)
+    fn from_32_bytes(_: [u8; 32]) -> Result<Self, secp256k1::Error> {
+        Err(secp256k1::Error::InvalidPublicKey)
+    }
+
+    fn from_33_bytes(x: [u8; 33]) -> Result<Self, secp256k1::Error> {
+        secp256k1::PublicKey::from_slice(&x).map(Self::new)
+    }
+
+    fn from_65_bytes(x: [u8; 65]) -> Result<Self, secp256k1::Error> {
+        secp256k1::PublicKey::from_slice(&x).map(Self::new_uncompressed)
     }
 }
 
 impl ParseableKey for bitcoin::secp256k1::XOnlyPublicKey {
-    fn from_slice(sl: &[u8]) -> Result<Self, KeyError> {
-        Self::from_slice(sl).map_err(KeyError::XOnly)
+    fn from_32_bytes(x: [u8; 32]) -> Result<Self, secp256k1::Error> { Self::from_slice(&x) }
+
+    fn from_33_bytes(_: [u8; 33]) -> Result<Self, secp256k1::Error> {
+        Err(secp256k1::Error::InvalidPublicKey)
     }
-}
 
-/// Private Mod to prevent downstream from implementing this public trait
-mod private {
-
-    pub trait Sealed {}
-
-    // Implement for those same types, but no others.
-    impl Sealed for bitcoin::PublicKey {}
-    impl Sealed for bitcoin::secp256k1::XOnlyPublicKey {}
+    fn from_65_bytes(_: [u8; 65]) -> Result<Self, secp256k1::Error> {
+        Err(secp256k1::Error::InvalidPublicKey)
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -328,10 +341,10 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> TerminalStack<Pk, Ctx> {
 
 /// Parse a script fragment into an `Miniscript`
 #[allow(unreachable_patterns)]
-pub fn decode<Ctx: ScriptContext>(
+pub fn decode<Pk: ParseableKey, Ctx: ScriptContext>(
     tokens: &mut TokenIter,
     params: &ValidationParams,
-) -> Result<Miniscript<Ctx::Key, Ctx>, Error> {
+) -> Result<Miniscript<Pk, Ctx>, Error> {
     let mut non_term = Vec::with_capacity(tokens.len());
     let mut term = TerminalStack(Vec::with_capacity(tokens.len()));
 
@@ -345,14 +358,20 @@ pub fn decode<Ctx: ScriptContext>(
                     tokens,
                     // pubkey
                     Tk::Bytes33(pk) => {
-                        let ret = Ctx::Key::from_slice(&pk)
-                            .map_err(|e| Error::PubKeyCtxError(e, Ctx::name_str()))?;
-                        term.push(Miniscript::pk_k(ret));
+                        if !params.allow_compressed_keys {
+                            // FIXME error out
+                        }
+                        let pk = Pk::from_33_bytes(pk)
+                            .map_err(Error::PublicKey)?;
+                        term.push(Miniscript::pk_k(pk));
                     },
                     Tk::Bytes65(pk) => {
-                        let ret = Ctx::Key::from_slice(&pk)
-                            .map_err(|e| Error::PubKeyCtxError(e, Ctx::name_str()))?;
-                        term.push(Miniscript::pk_k(ret));
+                        if !params.allow_uncompressed_keys {
+                            // FIXME error out
+                        }
+                        let pk = Pk::from_65_bytes(pk)
+                            .map_err(Error::PublicKey)?;
+                        term.push(Miniscript::pk_k(pk));
                     },
                     // Note this does not collide with hash32 because they always followed by equal
                     // and would be parsed in different branch. If we get a naked Bytes32, it must be
@@ -367,8 +386,12 @@ pub fn decode<Ctx: ScriptContext>(
                     // after bytes32 means bytes32 is in a hashlock
                     // Finally for the first case, K being parsed as a solo expression is a Pk type
                     Tk::Bytes32(pk) => {
-                        let ret = Ctx::Key::from_slice(&pk).map_err(|e| Error::PubKeyCtxError(e, Ctx::name_str()))?;
-                        term.push(Miniscript::pk_k(ret));
+                        if !params.allow_x_only_keys {
+                            // FIXME error out
+                        }
+                        let pk = Pk::from_32_bytes(pk)
+                            .map_err(Error::PublicKey)?;
+                        term.push(Miniscript::pk_k(pk));
                     },
                     // checksig
                     Tk::CheckSig => {
@@ -517,10 +540,10 @@ pub fn decode<Ctx: ScriptContext>(
                         for _ in 0..n {
                             match_token!(
                                 tokens,
-                                Tk::Bytes33(pk) => keys.push(<Ctx::Key>::from_slice(&pk)
-                                    .map_err(|e| Error::PubKeyCtxError(e, Ctx::name_str()))?),
-                                Tk::Bytes65(pk) => keys.push(<Ctx::Key>::from_slice(&pk)
-                                    .map_err(|e| Error::PubKeyCtxError(e, Ctx::name_str()))?),
+                                Tk::Bytes33(pk) => keys.push(Pk::from_33_bytes(pk)
+                                    .map_err(Error::PublicKey)?),
+                                Tk::Bytes65(pk) => keys.push(Pk::from_65_bytes(pk)
+                                    .map_err(Error::PublicKey)?),
                             );
                         }
                         let k = match_token!(
@@ -539,15 +562,15 @@ pub fn decode<Ctx: ScriptContext>(
                         while tokens.peek() == Some(&Tk::CheckSigAdd) {
                             match_token!(
                                 tokens,
-                                Tk::CheckSigAdd, Tk::Bytes32(pk) => keys.push(<Ctx::Key>::from_slice(&pk)
-                                    .map_err(|e| Error::PubKeyCtxError(e, Ctx::name_str()))?),
+                                Tk::CheckSigAdd, Tk::Bytes32(pk) => keys.push(Pk::from_32_bytes(pk)
+                                    .map_err(Error::PublicKey)?),
                             );
                         }
                         // Last key must be with a CheckSig
                         match_token!(
                             tokens,
-                            Tk::CheckSig, Tk::Bytes32(pk) => keys.push(<Ctx::Key>::from_slice(&pk)
-                                .map_err(|e| Error::PubKeyCtxError(e, Ctx::name_str()))?),
+                            Tk::CheckSig, Tk::Bytes32(pk) => keys.push(Pk::from_32_bytes(pk)
+                                .map_err(Error::PublicKey)?),
                         );
                         keys.reverse();
                         let thresh = Threshold::new(k as usize, keys).map_err(Error::Threshold)?;
@@ -701,34 +724,6 @@ fn is_and_v(tokens: &mut TokenIter) -> bool {
     )
 }
 
-/// Decoding error while parsing keys
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub enum KeyError {
-    /// Bitcoin PublicKey parse error
-    Full(bitcoin::key::FromSliceError),
-    /// Xonly key parse Error
-    XOnly(bitcoin::secp256k1::Error),
-}
-
-impl fmt::Display for KeyError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Full(e) => e.fmt(f),
-            Self::XOnly(e) => e.fmt(f),
-        }
-    }
-}
-
-#[cfg(feature = "std")]
-impl error::Error for KeyError {
-    fn cause(&self) -> Option<&(dyn error::Error + 'static)> {
-        match self {
-            Self::Full(e) => Some(e),
-            Self::XOnly(e) => Some(e),
-        }
-    }
-}
-
 /// Decoding error.
 #[derive(Debug)]
 pub enum Error {
@@ -736,8 +731,8 @@ pub enum Error {
     Construct(crate::WithSpan<super::ConstructError>),
     /// Error lexing a Script into Miniscript tokens.
     Lex(super::lex::Error),
-    /// PubKey invalid under current context
-    PubKeyCtxError(KeyError, &'static str),
+    /// Failed to decode a public key from bytes.
+    PublicKey(secp256k1::Error),
     /// Invalid absolute locktime
     AbsoluteLockTime(crate::AbsLockTimeError),
     /// Invalid absolute locktime
@@ -757,9 +752,7 @@ impl fmt::Display for Error {
         match *self {
             Self::Construct(ref e) => e.fmt(f),
             Self::Lex(ref e) => e.fmt(f),
-            Self::PubKeyCtxError(ref pk, ref ctx) => {
-                write!(f, "failed to parse {} key: {}", ctx, pk)
-            }
+            Self::PublicKey(ref e) => e.fmt(f),
             Self::AbsoluteLockTime(ref e) => e.fmt(f),
             Self::RelativeLockTime(ref e) => e.fmt(f),
             Self::Threshold(ref e) => e.fmt(f),
@@ -782,7 +775,7 @@ impl std::error::Error for Error {
         match *self {
             Self::Construct(ref e) => Some(e),
             Self::Lex(ref e) => Some(e),
-            Self::PubKeyCtxError(ref e, _) => Some(e),
+            Self::PublicKey(ref e) => Some(e),
             Self::AbsoluteLockTime(ref e) => Some(e),
             Self::RelativeLockTime(ref e) => Some(e),
             Self::Threshold(ref e) => Some(e),

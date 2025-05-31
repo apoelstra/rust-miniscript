@@ -827,7 +827,7 @@ impl<Pk: ToPublicKey> Miniscript<Pk, Tap> {
     }
 }
 
-impl<Ctx: ScriptContext> Miniscript<Ctx::Key, Ctx> {
+impl<Pk: MiniscriptKey + decode::ParseableKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     /// Attempt to decode a Miniscript from Script, checking only for consensus compatibility,
     /// and no other checks.
     ///
@@ -849,7 +849,6 @@ impl<Ctx: ScriptContext> Miniscript<Ctx::Key, Ctx> {
         let tokens = lex(script).map_err(decode::Error::Lex)?;
         let mut iter = TokenIter::new(tokens);
         let add_span = |e| crate::WithSpan::new(e).with_string(script.to_hex_string());
-
         let mut top = decode::decode(&mut iter, params)?;
         types::Type::type_check(&top.node)
             .map_err(ConstructError::TypeCheck)
