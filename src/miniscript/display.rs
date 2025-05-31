@@ -233,45 +233,43 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Terminal<Pk, Ctx> {
     /// Not public since we intend to move it to the Inner type once that exists.
     fn fragment_name(&self) -> &'static str {
         match *self {
-            Terminal::True => "1",
-            Terminal::False => "0",
-            Terminal::PkK(..) => "pk_k",
-            Terminal::PkH(..) => "pk_h",
+            Self::True => "1",
+            Self::False => "0",
+            Self::PkK(..) => "pk_k",
+            Self::PkH(..) => "pk_h",
             // `RawPkH` is currently unsupported in the descriptor spec. We temporarily
             // display and parse these by prefixing them with 'expr'.
-            Terminal::RawPkH(..) => "expr_raw_pk_h",
-            Terminal::After(..) => "after",
-            Terminal::Older(..) => "older",
-            Terminal::Sha256(..) => "sha256",
-            Terminal::Hash256(..) => "hash256",
-            Terminal::Ripemd160(..) => "ripemd160",
-            Terminal::Hash160(..) => "hash160",
-            Terminal::Alt(..) => "a",
-            Terminal::Swap(..) => "s",
-            Terminal::Check(ref sub) if matches!(sub.as_inner(), Terminal::PkK(..)) => "pk",
-            Terminal::Check(ref sub) if matches!(sub.as_inner(), Terminal::PkH(..)) => "pkh",
-            Terminal::Check(ref sub) if matches!(sub.as_inner(), Terminal::RawPkH(..)) => {
-                "expr_raw_pkh"
-            }
-            Terminal::Check(..) => "c",
-            Terminal::DupIf(..) => "d",
-            Terminal::Verify(..) => "v",
-            Terminal::NonZero(..) => "j",
-            Terminal::ZeroNotEqual(..) => "n",
-            Terminal::AndV(_, ref r) if matches!(r.as_inner(), Terminal::True) => "t",
-            Terminal::AndV(..) => "and_v",
-            Terminal::AndOr(_, _, ref c) if matches!(c.as_inner(), Terminal::False) => "and_n",
-            Terminal::AndB(..) => "and_b",
-            Terminal::AndOr(..) => "andor",
-            Terminal::OrB(..) => "or_b",
-            Terminal::OrD(..) => "or_d",
-            Terminal::OrC(..) => "or_c",
-            Terminal::OrI(_, ref r) if matches!(r.as_inner(), Terminal::False) => "u",
-            Terminal::OrI(ref l, _) if matches!(l.as_inner(), Terminal::False) => "l",
-            Terminal::OrI(..) => "or_i",
-            Terminal::Thresh(..) => "thresh",
-            Terminal::Multi(..) => "multi",
-            Terminal::MultiA(..) => "multi_a",
+            Self::RawPkH(..) => "expr_raw_pk_h",
+            Self::After(..) => "after",
+            Self::Older(..) => "older",
+            Self::Sha256(..) => "sha256",
+            Self::Hash256(..) => "hash256",
+            Self::Ripemd160(..) => "ripemd160",
+            Self::Hash160(..) => "hash160",
+            Self::Alt(..) => "a",
+            Self::Swap(..) => "s",
+            Self::Check(ref sub) if matches!(sub.as_inner(), Self::PkK(..)) => "pk",
+            Self::Check(ref sub) if matches!(sub.as_inner(), Self::PkH(..)) => "pkh",
+            Self::Check(ref sub) if matches!(sub.as_inner(), Self::RawPkH(..)) => "expr_raw_pkh",
+            Self::Check(..) => "c",
+            Self::DupIf(..) => "d",
+            Self::Verify(..) => "v",
+            Self::NonZero(..) => "j",
+            Self::ZeroNotEqual(..) => "n",
+            Self::AndV(_, ref r) if matches!(r.as_inner(), Self::True) => "t",
+            Self::AndV(..) => "and_v",
+            Self::AndOr(_, _, ref c) if matches!(c.as_inner(), Self::False) => "and_n",
+            Self::AndB(..) => "and_b",
+            Self::AndOr(..) => "andor",
+            Self::OrB(..) => "or_b",
+            Self::OrD(..) => "or_d",
+            Self::OrC(..) => "or_c",
+            Self::OrI(_, ref r) if matches!(r.as_inner(), Self::False) => "u",
+            Self::OrI(ref l, _) if matches!(l.as_inner(), Self::False) => "l",
+            Self::OrI(..) => "or_i",
+            Self::Thresh(..) => "thresh",
+            Self::Multi(..) => "multi",
+            Self::MultiA(..) => "multi_a",
         }
     }
 
@@ -279,7 +277,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Terminal<Pk, Ctx> {
     ///
     /// Not public since we intend to move it to the Inner type once that exists.
     fn is_wrapper(&self) -> bool {
-        !matches!(self, Terminal::True | Terminal::False) && self.fragment_name().len() == 1
+        !matches!(self, Self::True | Self::False) && self.fragment_name().len() == 1
     }
 }
 

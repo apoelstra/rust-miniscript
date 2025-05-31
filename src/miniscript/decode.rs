@@ -33,13 +33,13 @@ pub trait ParseableKey: Sized + ToPublicKey + private::Sealed {
 
 impl ParseableKey for bitcoin::PublicKey {
     fn from_slice(sl: &[u8]) -> Result<Self, KeyError> {
-        bitcoin::PublicKey::from_slice(sl).map_err(KeyError::Full)
+        Self::from_slice(sl).map_err(KeyError::Full)
     }
 }
 
 impl ParseableKey for bitcoin::secp256k1::XOnlyPublicKey {
     fn from_slice(sl: &[u8]) -> Result<Self, KeyError> {
-        bitcoin::secp256k1::XOnlyPublicKey::from_slice(sl).map_err(KeyError::XOnly)
+        Self::from_slice(sl).map_err(KeyError::XOnly)
     }
 }
 
@@ -164,56 +164,52 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Clone for Terminal<Pk, Ctx> {
     /// If users just want to clone Arcs they can use Arc::clone themselves.
     fn clone(&self) -> Self {
         match self {
-            Terminal::PkK(ref p) => Terminal::PkK(p.clone()),
-            Terminal::PkH(ref p) => Terminal::PkH(p.clone()),
-            Terminal::RawPkH(ref p) => Terminal::RawPkH(*p),
-            Terminal::After(ref n) => Terminal::After(*n),
-            Terminal::Older(ref n) => Terminal::Older(*n),
-            Terminal::Sha256(ref x) => Terminal::Sha256(x.clone()),
-            Terminal::Hash256(ref x) => Terminal::Hash256(x.clone()),
-            Terminal::Ripemd160(ref x) => Terminal::Ripemd160(x.clone()),
-            Terminal::Hash160(ref x) => Terminal::Hash160(x.clone()),
-            Terminal::True => Terminal::True,
-            Terminal::False => Terminal::False,
-            Terminal::Alt(ref sub) => Terminal::Alt(Arc::new(Miniscript::clone(sub))),
-            Terminal::Swap(ref sub) => Terminal::Swap(Arc::new(Miniscript::clone(sub))),
-            Terminal::Check(ref sub) => Terminal::Check(Arc::new(Miniscript::clone(sub))),
-            Terminal::DupIf(ref sub) => Terminal::DupIf(Arc::new(Miniscript::clone(sub))),
-            Terminal::Verify(ref sub) => Terminal::Verify(Arc::new(Miniscript::clone(sub))),
-            Terminal::NonZero(ref sub) => Terminal::NonZero(Arc::new(Miniscript::clone(sub))),
-            Terminal::ZeroNotEqual(ref sub) => {
-                Terminal::ZeroNotEqual(Arc::new(Miniscript::clone(sub)))
+            Self::PkK(ref p) => Self::PkK(p.clone()),
+            Self::PkH(ref p) => Self::PkH(p.clone()),
+            Self::RawPkH(ref p) => Self::RawPkH(*p),
+            Self::After(ref n) => Self::After(*n),
+            Self::Older(ref n) => Self::Older(*n),
+            Self::Sha256(ref x) => Self::Sha256(x.clone()),
+            Self::Hash256(ref x) => Self::Hash256(x.clone()),
+            Self::Ripemd160(ref x) => Self::Ripemd160(x.clone()),
+            Self::Hash160(ref x) => Self::Hash160(x.clone()),
+            Self::True => Self::True,
+            Self::False => Self::False,
+            Self::Alt(ref sub) => Self::Alt(Arc::new(Miniscript::clone(sub))),
+            Self::Swap(ref sub) => Self::Swap(Arc::new(Miniscript::clone(sub))),
+            Self::Check(ref sub) => Self::Check(Arc::new(Miniscript::clone(sub))),
+            Self::DupIf(ref sub) => Self::DupIf(Arc::new(Miniscript::clone(sub))),
+            Self::Verify(ref sub) => Self::Verify(Arc::new(Miniscript::clone(sub))),
+            Self::NonZero(ref sub) => Self::NonZero(Arc::new(Miniscript::clone(sub))),
+            Self::ZeroNotEqual(ref sub) => Self::ZeroNotEqual(Arc::new(Miniscript::clone(sub))),
+            Self::AndV(ref left, ref right) => {
+                Self::AndV(Arc::new(Miniscript::clone(left)), Arc::new(Miniscript::clone(right)))
             }
-            Terminal::AndV(ref left, ref right) => Terminal::AndV(
-                Arc::new(Miniscript::clone(left)),
-                Arc::new(Miniscript::clone(right)),
-            ),
-            Terminal::AndB(ref left, ref right) => Terminal::AndB(
-                Arc::new(Miniscript::clone(left)),
-                Arc::new(Miniscript::clone(right)),
-            ),
-            Terminal::AndOr(ref a, ref b, ref c) => Terminal::AndOr(
+            Self::AndB(ref left, ref right) => {
+                Self::AndB(Arc::new(Miniscript::clone(left)), Arc::new(Miniscript::clone(right)))
+            }
+            Self::AndOr(ref a, ref b, ref c) => Self::AndOr(
                 Arc::new(Miniscript::clone(a)),
                 Arc::new(Miniscript::clone(b)),
                 Arc::new(Miniscript::clone(c)),
             ),
-            Terminal::OrB(ref left, ref right) => {
-                Terminal::OrB(Arc::new(Miniscript::clone(left)), Arc::new(Miniscript::clone(right)))
+            Self::OrB(ref left, ref right) => {
+                Self::OrB(Arc::new(Miniscript::clone(left)), Arc::new(Miniscript::clone(right)))
             }
-            Terminal::OrD(ref left, ref right) => {
-                Terminal::OrD(Arc::new(Miniscript::clone(left)), Arc::new(Miniscript::clone(right)))
+            Self::OrD(ref left, ref right) => {
+                Self::OrD(Arc::new(Miniscript::clone(left)), Arc::new(Miniscript::clone(right)))
             }
-            Terminal::OrC(ref left, ref right) => {
-                Terminal::OrC(Arc::new(Miniscript::clone(left)), Arc::new(Miniscript::clone(right)))
+            Self::OrC(ref left, ref right) => {
+                Self::OrC(Arc::new(Miniscript::clone(left)), Arc::new(Miniscript::clone(right)))
             }
-            Terminal::OrI(ref left, ref right) => {
-                Terminal::OrI(Arc::new(Miniscript::clone(left)), Arc::new(Miniscript::clone(right)))
+            Self::OrI(ref left, ref right) => {
+                Self::OrI(Arc::new(Miniscript::clone(left)), Arc::new(Miniscript::clone(right)))
             }
-            Terminal::Thresh(ref thresh) => {
-                Terminal::Thresh(thresh.map_ref(|child| Arc::new(Miniscript::clone(child))))
+            Self::Thresh(ref thresh) => {
+                Self::Thresh(thresh.map_ref(|child| Arc::new(Miniscript::clone(child))))
             }
-            Terminal::Multi(ref thresh) => Terminal::Multi(thresh.clone()),
-            Terminal::MultiA(ref thresh) => Terminal::MultiA(thresh.clone()),
+            Self::Multi(ref thresh) => Self::Multi(thresh.clone()),
+            Self::MultiA(ref thresh) => Self::MultiA(thresh.clone()),
         }
     }
 }
@@ -222,17 +218,17 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> PartialEq for Terminal<Pk, Ctx> {
     fn eq(&self, other: &Self) -> bool {
         for (me, you) in self.pre_order_iter().zip(other.pre_order_iter()) {
             match (me, you) {
-                (Terminal::PkK(key1), Terminal::PkK(key2)) if key1 != key2 => return false,
-                (Terminal::PkH(key1), Terminal::PkH(key2)) if key1 != key2 => return false,
-                (Terminal::RawPkH(h1), Terminal::RawPkH(h2)) if h1 != h2 => return false,
-                (Terminal::After(t1), Terminal::After(t2)) if t1 != t2 => return false,
-                (Terminal::Older(t1), Terminal::Older(t2)) if t1 != t2 => return false,
-                (Terminal::Sha256(h1), Terminal::Sha256(h2)) if h1 != h2 => return false,
-                (Terminal::Hash256(h1), Terminal::Hash256(h2)) if h1 != h2 => return false,
-                (Terminal::Ripemd160(h1), Terminal::Ripemd160(h2)) if h1 != h2 => return false,
-                (Terminal::Hash160(h1), Terminal::Hash160(h2)) if h1 != h2 => return false,
-                (Terminal::Multi(th1), Terminal::Multi(th2)) if th1 != th2 => return false,
-                (Terminal::MultiA(th1), Terminal::MultiA(th2)) if th1 != th2 => return false,
+                (Self::PkK(key1), Self::PkK(key2)) if key1 != key2 => return false,
+                (Self::PkH(key1), Self::PkH(key2)) if key1 != key2 => return false,
+                (Self::RawPkH(h1), Self::RawPkH(h2)) if h1 != h2 => return false,
+                (Self::After(t1), Self::After(t2)) if t1 != t2 => return false,
+                (Self::Older(t1), Self::Older(t2)) if t1 != t2 => return false,
+                (Self::Sha256(h1), Self::Sha256(h2)) if h1 != h2 => return false,
+                (Self::Hash256(h1), Self::Hash256(h2)) if h1 != h2 => return false,
+                (Self::Ripemd160(h1), Self::Ripemd160(h2)) if h1 != h2 => return false,
+                (Self::Hash160(h1), Self::Hash160(h2)) if h1 != h2 => return false,
+                (Self::Multi(th1), Self::Multi(th2)) if th1 != th2 => return false,
+                (Self::MultiA(th1), Self::MultiA(th2)) if th1 != th2 => return false,
                 _ => {
                     if mem::discriminant(me) != mem::discriminant(you) {
                         return false;
@@ -250,22 +246,22 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> core::hash::Hash for Terminal<Pk, Ct
         for term in self.pre_order_iter() {
             mem::discriminant(term).hash(hasher);
             match term {
-                Terminal::PkK(key) => key.hash(hasher),
-                Terminal::PkH(key) => key.hash(hasher),
-                Terminal::RawPkH(h) => h.hash(hasher),
-                Terminal::After(t) => t.hash(hasher),
-                Terminal::Older(t) => t.hash(hasher),
-                Terminal::Sha256(h) => h.hash(hasher),
-                Terminal::Hash256(h) => h.hash(hasher),
-                Terminal::Ripemd160(h) => h.hash(hasher),
-                Terminal::Hash160(h) => h.hash(hasher),
-                Terminal::Thresh(th) => {
+                Self::PkK(key) => key.hash(hasher),
+                Self::PkH(key) => key.hash(hasher),
+                Self::RawPkH(h) => h.hash(hasher),
+                Self::After(t) => t.hash(hasher),
+                Self::Older(t) => t.hash(hasher),
+                Self::Sha256(h) => h.hash(hasher),
+                Self::Hash256(h) => h.hash(hasher),
+                Self::Ripemd160(h) => h.hash(hasher),
+                Self::Hash160(h) => h.hash(hasher),
+                Self::Thresh(th) => {
                     th.k().hash(hasher);
                     th.n().hash(hasher);
                     // The actual children will be hashed when we iterate
                 }
-                Terminal::Multi(th) => th.hash(hasher),
-                Terminal::MultiA(th) => th.hash(hasher),
+                Self::Multi(th) => th.hash(hasher),
+                Self::MultiA(th) => th.hash(hasher),
                 _ => {}
             }
         }

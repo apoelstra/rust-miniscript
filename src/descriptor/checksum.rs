@@ -61,13 +61,13 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Error::InvalidCharacter { ch, pos } => {
+            Self::InvalidCharacter { ch, pos } => {
                 write!(f, "invalid character '{}' (position {})", ch, pos)
             }
-            Error::InvalidChecksumLength { actual, expected } => {
+            Self::InvalidChecksumLength { actual, expected } => {
                 write!(f, "invalid checksum (length {}, expected {})", actual, expected)
             }
-            Error::InvalidChecksum { actual, expected } => {
+            Self::InvalidChecksum { actual, expected } => {
                 f.write_str("invalid checksum ")?;
                 for ch in actual {
                     ch.fmt(f)?;
@@ -135,13 +135,13 @@ pub struct Engine {
 }
 
 impl Default for Engine {
-    fn default() -> Engine { Engine::new() }
+    fn default() -> Self { Self::new() }
 }
 
 impl Engine {
     /// Constructs an engine with no input.
     pub fn new() -> Self {
-        Engine { inner: bech32::primitives::checksum::Engine::new(), cls: 0, clscount: 0 }
+        Self { inner: bech32::primitives::checksum::Engine::new(), cls: 0, clscount: 0 }
     }
 
     /// Inputs some data into the checksum engine.

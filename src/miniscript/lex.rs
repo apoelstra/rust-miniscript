@@ -53,11 +53,11 @@ pub enum Token {
 impl fmt::Display for Token {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Token::Num(n) => write!(f, "#{}", n),
-            Token::Hash20(b) => write!(f, "{}", b.as_hex()),
-            Token::Bytes32(b) => write!(f, "{}", b.as_hex()),
-            Token::Bytes33(b) => write!(f, "{}", b.as_hex()),
-            Token::Bytes65(b) => write!(f, "{}", b.as_hex()),
+            Self::Num(n) => write!(f, "#{}", n),
+            Self::Hash20(b) => write!(f, "{}", b.as_hex()),
+            Self::Bytes32(b) => write!(f, "{}", b.as_hex()),
+            Self::Bytes33(b) => write!(f, "{}", b.as_hex()),
+            Self::Bytes65(b) => write!(f, "{}", b.as_hex()),
             x => write!(f, "{:?}", x),
         }
     }
@@ -70,7 +70,7 @@ pub struct TokenIter(Vec<Token>);
 
 impl TokenIter {
     /// Create a new TokenIter
-    pub fn new(v: Vec<Token>) -> TokenIter { TokenIter(v) }
+    pub fn new(v: Vec<Token>) -> Self { Self(v) }
 
     /// Look at the top at Iterator
     pub fn peek(&self) -> Option<&Token> { self.0.last() }

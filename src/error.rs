@@ -78,7 +78,7 @@ impl Eq for ParseError {}
 impl ParseError {
     /// Boxes a `FromStr` error for a `Pk` (or associated types) into a `ParseError`
     pub(crate) fn box_from_str<E: StaticDebugAndDisplay>(e: E) -> Self {
-        ParseError::FromStr(Box::new(e))
+        Self::FromStr(Box::new(e))
     }
 }
 
@@ -97,12 +97,12 @@ impl From<crate::ParseTreeError> for ParseError {
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match self {
-            ParseError::AbsoluteLockTime(ref e) => e.fmt(f),
-            ParseError::RelativeLockTime(ref e) => e.fmt(f),
-            ParseError::FromStr(ref e) => e.fmt(f),
-            ParseError::Num(ref e) => e.fmt(f),
-            ParseError::Threshold(ref e) => e.fmt(f),
-            ParseError::Tree(ref e) => e.fmt(f),
+            Self::AbsoluteLockTime(ref e) => e.fmt(f),
+            Self::RelativeLockTime(ref e) => e.fmt(f),
+            Self::FromStr(ref e) => e.fmt(f),
+            Self::Num(ref e) => e.fmt(f),
+            Self::Threshold(ref e) => e.fmt(f),
+            Self::Tree(ref e) => e.fmt(f),
         }
     }
 }
@@ -111,12 +111,12 @@ impl fmt::Display for ParseError {
 impl error::Error for ParseError {
     fn source(&self) -> Option<&(dyn error::Error + 'static)> {
         match self {
-            ParseError::AbsoluteLockTime(ref e) => Some(e),
-            ParseError::RelativeLockTime(ref e) => Some(e),
-            ParseError::FromStr(..) => None,
-            ParseError::Num(ref e) => Some(e),
-            ParseError::Threshold(ref e) => Some(e),
-            ParseError::Tree(ref e) => Some(e),
+            Self::AbsoluteLockTime(ref e) => Some(e),
+            Self::RelativeLockTime(ref e) => Some(e),
+            Self::FromStr(..) => None,
+            Self::Num(ref e) => Some(e),
+            Self::Threshold(ref e) => Some(e),
+            Self::Tree(ref e) => Some(e),
         }
     }
 }

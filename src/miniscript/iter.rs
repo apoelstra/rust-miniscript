@@ -27,7 +27,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
 
     /// Enumerates all child nodes of the current AST node (`self`) and returns a `Vec` referencing
     /// them.
-    pub fn branches(&self) -> Vec<&Miniscript<Pk, Ctx>> {
+    pub fn branches(&self) -> Vec<&Self> {
         match self.node {
             Terminal::PkK(_) | Terminal::PkH(_) | Terminal::RawPkH(_) | Terminal::Multi(_) => {
                 vec![]
@@ -57,7 +57,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     }
 
     /// Returns child node with given index, if any
-    pub fn get_nth_child(&self, n: usize) -> Option<&Miniscript<Pk, Ctx>> {
+    pub fn get_nth_child(&self, n: usize) -> Option<&Self> {
         match (n, &self.node) {
             (0, Terminal::Alt(node))
             | (0, Terminal::Swap(node))

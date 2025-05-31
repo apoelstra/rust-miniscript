@@ -136,7 +136,7 @@ mod private {
                     Terminal::MultiA(ref thresh) => Terminal::MultiA(thresh.clone()),
                 };
 
-                stack.push(Arc::new(Miniscript {
+                stack.push(Arc::new(Self {
                     node: new_term,
                     ty: item.node.ty,
                     ext: item.node.ext,
@@ -152,7 +152,7 @@ mod private {
 
     impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
         /// The `1` combinator.
-        pub const TRUE: Self = Miniscript {
+        pub const TRUE: Self = Self {
             node: Terminal::True,
             ty: types::Type::TRUE,
             ext: types::extra_props::ExtData::TRUE,
@@ -161,7 +161,7 @@ mod private {
         };
 
         /// The `0` combinator.
-        pub const FALSE: Self = Miniscript {
+        pub const FALSE: Self = Self {
             node: Terminal::False,
             ty: types::Type::FALSE,
             ext: types::extra_props::ExtData::FALSE,
@@ -322,8 +322,8 @@ mod private {
         pub fn from_ast(
             t: Terminal<Pk, Ctx>,
             params: &ValidationParams,
-        ) -> Result<Miniscript<Pk, Ctx>, WithSpan<ConstructError>> {
-            let mut res = Miniscript {
+        ) -> Result<Self, WithSpan<ConstructError>> {
+            let mut res = Self {
                 ty: Type::type_check(&t)
                     .map_err(ConstructError::TypeCheck)
                     .map_err(|e| WithSpan::new(e).with_string(t.to_string()))?,
@@ -347,8 +347,8 @@ mod private {
             node: Terminal<Pk, Ctx>,
             ty: types::Type,
             ext: types::extra_props::ExtData,
-        ) -> Miniscript<Pk, Ctx> {
-            Miniscript { node, ty, ext, validated: ValidationParams::MAX, phantom: PhantomData }
+        ) -> Self {
+            Self { node, ty, ext, validated: ValidationParams::MAX, phantom: PhantomData }
         }
 
         /// Accessor for the set of parameters which this [`Miniscript`] has been
@@ -835,20 +835,18 @@ impl<Ctx: ScriptContext> Miniscript<Ctx::Key, Ctx> {
     /// It may make sense to use this method when parsing Script that is already
     /// embedded in the chain. While it is inadvisable to use insane Miniscripts,
     /// once it's on the chain you don't have much choice anymore.
-    pub fn decode_consensus(
-        script: &script::Script,
-    ) -> Result<Miniscript<Ctx::Key, Ctx>, decode::Error> {
+    pub fn decode_consensus(script: &script::Script) -> Result<Self, decode::Error> {
         // FIXME by using ValidationParams::MAX we actually parse more than is allowed
         // by consensus; in particular, we don't enforce size limits. If we want to do
         // this, we need to add a new Ctx::CONSENSUS constant and use that.
-        Miniscript::decode_with_validation_params(script, &ValidationParams::MAX)
+        Self::decode_with_validation_params(script, &ValidationParams::MAX)
     }
 
     /// Attempt to decode a Miniscript from Script, specifying which validation parameters to apply.
     pub fn decode_with_validation_params(
         script: &script::Script,
         params: &ValidationParams,
-    ) -> Result<Miniscript<Ctx::Key, Ctx>, decode::Error> {
+    ) -> Result<Self, decode::Error> {
         let tokens = lex(script).map_err(decode::Error::Lex)?;
         let mut iter = TokenIter::new(tokens);
         let add_span = |e| crate::WithSpan::new(e).with_string(script.to_hex_string());
@@ -901,7 +899,7 @@ impl<Ctx: ScriptContext> Miniscript<Ctx::Key, Ctx> {
     ///     .expect("Compressed keys are allowed in Segwit context");
     ///
     /// ```
-    pub fn decode(script: &script::Script) -> Result<Miniscript<Ctx::Key, Ctx>, decode::Error> {
+    pub fn decode(script: &script::Script) -> Result<Self, decode::Error> {
         let ms = Self::decode_with_validation_params(script, &Ctx::SANE)?;
         Ok(ms)
     }
@@ -911,23 +909,21 @@ impl<Ctx: ScriptContext> Miniscript<Ctx::Key, Ctx> {
 ///
 /// The type information and extra properties are implied by the AST.
 impl<Pk: MiniscriptKey, Ctx: ScriptContext> PartialOrd for Miniscript<Pk, Ctx> {
-    fn partial_cmp(&self, other: &Miniscript<Pk, Ctx>) -> Option<cmp::Ordering> {
-        Some(self.cmp(other))
-    }
+    fn partial_cmp(&self, other: &Self) -> Option<cmp::Ordering> { Some(self.cmp(other)) }
 }
 
 /// `Ord` of `Miniscript` must depend only on node and not the type information.
 ///
 /// The type information and extra properties are implied by the AST.
 impl<Pk: MiniscriptKey, Ctx: ScriptContext> Ord for Miniscript<Pk, Ctx> {
-    fn cmp(&self, other: &Miniscript<Pk, Ctx>) -> cmp::Ordering { self.node.cmp(&other.node) }
+    fn cmp(&self, other: &Self) -> cmp::Ordering { self.node.cmp(&other.node) }
 }
 
 /// `PartialEq` of `Miniscript` must depend only on node and not the type information.
 ///
 /// The type information and extra properties are implied by the AST.
 impl<Pk: MiniscriptKey, Ctx: ScriptContext> PartialEq for Miniscript<Pk, Ctx> {
-    fn eq(&self, other: &Miniscript<Pk, Ctx>) -> bool { self.node.eq(&other.node) }
+    fn eq(&self, other: &Self) -> bool { self.node.eq(&other.node) }
 }
 
 /// `Eq` of `Miniscript` must depend only on node and not the type information.
@@ -1067,7 +1063,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     }
 
     /// Substitutes raw public keys hashes with the public keys as provided by map.
-    pub fn substitute_raw_pkh(&self, pk_map: &BTreeMap<hash160::Hash, Pk>) -> Miniscript<Pk, Ctx> {
+    pub fn substitute_raw_pkh(&self, pk_map: &BTreeMap<hash160::Hash, Pk>) -> Self {
         let mut stack = vec![];
         for item in self.rtl_post_order_iter() {
             let new_term = match item.node.node {
@@ -1111,7 +1107,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
                 Terminal::MultiA(ref thresh) => Terminal::MultiA(thresh.clone()),
             };
 
-            stack.push(Arc::new(Miniscript::from_components_unchecked(
+            stack.push(Arc::new(Self::from_components_unchecked(
                 new_term,
                 item.node.ty,
                 item.node.ext,
@@ -1155,7 +1151,7 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     /// It is not recommended to use scripts which require this function in order
     /// to parse, especially in a multiparty setting.
     pub fn from_str_insane(s: &str) -> Result<Self, ParseMiniscriptError> {
-        Miniscript::from_str_with_validation_params(s, &Ctx::CONSENSUS)
+        Self::from_str_with_validation_params(s, &Ctx::CONSENSUS)
     }
 
     /// Attempt to parse a Miniscript, specifying which validation parameters to apply.
@@ -1165,7 +1161,7 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     ) -> Result<Self, ParseMiniscriptError> {
         // This checks for invalid ASCII chars
         let top = expression::Tree::from_str(s)?;
-        Miniscript::<Pk, Ctx>::from_tree(top.root(), params)
+        Self::from_tree(top.root(), params)
     }
 }
 
@@ -1224,49 +1220,49 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
             let new = match frag_name {
                 "expr_raw_pkh" => node
                     .verify_terminal_parent("expr_raw_pkh", "public key hash")
-                    .map(Miniscript::expr_raw_pkh)?,
+                    .map(Self::expr_raw_pkh)?,
                 "pk" => node
                     .verify_terminal_parent("pk", "public key")
-                    .map(Miniscript::pk)?,
+                    .map(Self::pk)?,
                 "pkh" => node
                     .verify_terminal_parent("pkh", "public key")
-                    .map(Miniscript::pkh)?,
+                    .map(Self::pkh)?,
                 "pk_k" => node
                     .verify_terminal_parent("pk_k", "public key")
-                    .map(Miniscript::pk_k)?,
+                    .map(Self::pk_k)?,
                 "pk_h" => node
                     .verify_terminal_parent("pk_h", "public key")
-                    .map(Miniscript::pk_h)?,
-                "after" => node.verify_after().map(Miniscript::after)?,
-                "older" => node.verify_older().map(Miniscript::older)?,
+                    .map(Self::pk_h)?,
+                "after" => node.verify_after().map(Self::after)?,
+                "older" => node.verify_older().map(Self::older)?,
                 "sha256" => node
                     .verify_terminal_parent("sha256", "hash")
-                    .map(Miniscript::sha256)?,
+                    .map(Self::sha256)?,
                 "hash256" => node
                     .verify_terminal_parent("hash256", "hash")
-                    .map(Miniscript::hash256)?,
+                    .map(Self::hash256)?,
                 "ripemd160" => node
                     .verify_terminal_parent("ripemd160", "hash")
-                    .map(Miniscript::ripemd160)?,
+                    .map(Self::ripemd160)?,
                 "hash160" => node
                     .verify_terminal_parent("hash160", "hash")
-                    .map(Miniscript::hash160)?,
+                    .map(Self::hash160)?,
                 "1" => {
                     node.verify_n_children("1", 0..=0)?;
-                    Miniscript::TRUE
+                    Self::TRUE
                 }
                 "0" => {
                     node.verify_n_children("0", 0..=0)?;
-                    Miniscript::FALSE
+                    Self::FALSE
                 }
                 "and_v" => binary(node, &mut stack, "and_v", params, Terminal::AndV)?,
                 "and_b" => binary(node, &mut stack, "and_b", params, Terminal::AndB)?,
                 "and_n" => binary(node, &mut stack, "and_n", params, |x, y| {
-                    Terminal::AndOr(x, y, Arc::new(Miniscript::FALSE))
+                    Terminal::AndOr(x, y, Arc::new(Self::FALSE))
                 })?,
                 "andor" => {
                     node.verify_n_children("andor", 3..=3)?;
-                    Miniscript::from_ast(
+                    Self::from_ast(
                         Terminal::AndOr(
                             stack.pop().unwrap(),
                             stack.pop().unwrap(),
@@ -1285,19 +1281,19 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
                             Result::<_, ParseMiniscriptError>::Ok(stack.pop().unwrap())
                         })
                         .map(Terminal::Thresh)?;
-                    Miniscript::from_ast(term, params)?
+                    Self::from_ast(term, params)?
                 }
                 "multi" => {
                     let term = node
                         .verify_threshold(|sub| sub.verify_terminal("public_key"))
                         .map(Terminal::Multi)?;
-                    Miniscript::from_ast(term, params)?
+                    Self::from_ast(term, params)?
                 }
                 "multi_a" => {
                     let term = node
                         .verify_threshold(|sub| sub.verify_terminal("public_key"))
                         .map(Terminal::MultiA)?;
-                    Miniscript::from_ast(term, params)?
+                    Self::from_ast(term, params)?
                 }
                 x => return Err(crate::ParseTreeError::UnknownName { name: x.to_owned() }.into()),
             };
@@ -1321,9 +1317,9 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
                         b'v' => Terminal::Verify(new),
                         b'j' => Terminal::NonZero(new),
                         b'n' => Terminal::ZeroNotEqual(new),
-                        b't' => Terminal::AndV(new, Arc::new(Miniscript::TRUE)),
-                        b'u' => Terminal::OrI(new, Arc::new(Miniscript::FALSE)),
-                        b'l' => Terminal::OrI(Arc::new(Miniscript::FALSE), new),
+                        b't' => Terminal::AndV(new, Arc::new(Self::TRUE)),
+                        b'u' => Terminal::OrI(new, Arc::new(Self::FALSE)),
+                        b'l' => Terminal::OrI(Arc::new(Self::FALSE), new),
                         x => {
                             return Err(crate::ParseTreeError::UnknownName {
                                 name: format!("{} (wrapper)", x),
@@ -1331,7 +1327,7 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
                             .into())
                         }
                     };
-                    new = Arc::new(Miniscript::from_ast(term, params)?);
+                    new = Arc::new(Self::from_ast(term, params)?);
                 }
             }
 

@@ -36,7 +36,7 @@ pub struct RelLockTime(Sequence);
 
 impl RelLockTime {
     /// The "0 blocks" constant.
-    pub const ZERO: Self = RelLockTime(Sequence::ZERO);
+    pub const ZERO: Self = Self(Sequence::ZERO);
 
     /// Constructs an `RelLockTime` from an nLockTime value or the argument to `CHEKCLOCKTIMEVERIFY`.
     pub fn from_consensus(n: u32) -> Result<Self, RelLockTimeError> {
@@ -48,11 +48,11 @@ impl RelLockTime {
     pub fn to_consensus_u32(self) -> u32 { self.0.to_consensus_u32() }
 
     /// Takes a 16-bit number of blocks and produces a relative locktime from it.
-    pub fn from_height(height: u16) -> Self { RelLockTime(Sequence::from_height(height)) }
+    pub fn from_height(height: u16) -> Self { Self(Sequence::from_height(height)) }
 
     /// Takes a 16-bit number of 512-second time intervals and produces a relative locktime from it.
     pub fn from_512_second_intervals(time: u16) -> Self {
-        RelLockTime(Sequence::from_512_second_intervals(time))
+        Self(Sequence::from_512_second_intervals(time))
     }
 
     /// Whether this timelock is blockheight-based.
@@ -66,7 +66,7 @@ impl convert::TryFrom<Sequence> for RelLockTime {
     type Error = RelLockTimeError;
     fn try_from(seq: Sequence) -> Result<Self, RelLockTimeError> {
         if seq.is_relative_lock_time() && seq != Sequence::ZERO {
-            Ok(RelLockTime(seq))
+            Ok(Self(seq))
         } else {
             Err(RelLockTimeError { value: seq.to_consensus_u32() })
         }
@@ -74,13 +74,11 @@ impl convert::TryFrom<Sequence> for RelLockTime {
 }
 
 impl From<RelLockTime> for Sequence {
-    fn from(lock_time: RelLockTime) -> Sequence { lock_time.0 }
+    fn from(lock_time: RelLockTime) -> Self { lock_time.0 }
 }
 
 impl From<RelLockTime> for relative::LockTime {
-    fn from(lock_time: RelLockTime) -> relative::LockTime {
-        lock_time.0.to_relative_lock_time().unwrap()
-    }
+    fn from(lock_time: RelLockTime) -> Self { lock_time.0.to_relative_lock_time().unwrap() }
 }
 
 impl cmp::PartialOrd for RelLockTime {

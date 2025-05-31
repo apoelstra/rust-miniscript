@@ -247,7 +247,7 @@ impl<Pk: FromStrKey> core::str::FromStr for Wsh<Pk> {
     type Err = ParseMiniscriptError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let top = expression::Tree::from_str(s)?;
-        Wsh::<Pk>::from_tree(top.root(), &Segwitv0::SANE)
+        Self::from_tree(top.root(), &Segwitv0::SANE)
     }
 }
 

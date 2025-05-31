@@ -462,14 +462,14 @@ const MAX_RECURSION_DEPTH: u32 = 402;
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Error::AddrP2shError(ref e) => fmt::Display::fmt(e, f),
-            Error::MissingSig(ref pk) => write!(f, "missing signature for key {:?}", pk),
-            Error::CouldNotSatisfy => f.write_str("could not satisfy"),
-            Error::BareDescriptorAddr => write!(f, "Bare descriptors don't have address"),
-            Error::TrNoScriptCode => write!(f, "No script code for Tr descriptors"),
-            Error::Threshold(ref e) => e.fmt(f),
-            Error::Parse(ref e) => e.fmt(f),
-            Error::Validation(ref e) => e.fmt(f),
+            Self::AddrP2shError(ref e) => fmt::Display::fmt(e, f),
+            Self::MissingSig(ref pk) => write!(f, "missing signature for key {:?}", pk),
+            Self::CouldNotSatisfy => f.write_str("could not satisfy"),
+            Self::BareDescriptorAddr => write!(f, "Bare descriptors don't have address"),
+            Self::TrNoScriptCode => write!(f, "No script code for Tr descriptors"),
+            Self::Threshold(ref e) => e.fmt(f),
+            Self::Parse(ref e) => e.fmt(f),
+            Self::Validation(ref e) => e.fmt(f),
         }
     }
 }
@@ -477,21 +477,22 @@ impl fmt::Display for Error {
 #[cfg(feature = "std")]
 impl std::error::Error for Error {
     fn cause(&self) -> Option<&dyn std::error::Error> {
-        use self::Error::*;
-
         match self {
-            MissingSig(_) | CouldNotSatisfy | BareDescriptorAddr | TrNoScriptCode => None,
-            AddrP2shError(e) => Some(e),
-            Threshold(e) => Some(e),
-            Parse(e) => Some(e),
-            Validation(e) => Some(e),
+            Self::MissingSig(_)
+            | Self::CouldNotSatisfy
+            | Self::BareDescriptorAddr
+            | Self::TrNoScriptCode => None,
+            Self::AddrP2shError(e) => Some(e),
+            Self::Threshold(e) => Some(e),
+            Self::Parse(e) => Some(e),
+            Self::Validation(e) => Some(e),
         }
     }
 }
 
 #[doc(hidden)]
 impl From<bitcoin::address::P2shError> for Error {
-    fn from(e: bitcoin::address::P2shError) -> Error { Error::AddrP2shError(e) }
+    fn from(e: bitcoin::address::P2shError) -> Self { Self::AddrP2shError(e) }
 }
 
 /// The size of an encoding of a number in Script

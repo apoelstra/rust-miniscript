@@ -55,8 +55,8 @@ impl KeySigPair {
     /// Obtain a pair of ([`bitcoin::PublicKey`], [`bitcoin::ecdsa::Signature`]) from [`KeySigPair`]
     pub fn as_ecdsa(&self) -> Option<(bitcoin::PublicKey, bitcoin::ecdsa::Signature)> {
         match self {
-            KeySigPair::Ecdsa(pk, sig) => Some((*pk, *sig)),
-            KeySigPair::Schnorr(_, _) => None,
+            Self::Ecdsa(pk, sig) => Some((*pk, *sig)),
+            Self::Schnorr(_, _) => None,
         }
     }
 
@@ -65,8 +65,8 @@ impl KeySigPair {
         &self,
     ) -> Option<(bitcoin::key::XOnlyPublicKey, bitcoin::taproot::Signature)> {
         match self {
-            KeySigPair::Ecdsa(_, _) => None,
-            KeySigPair::Schnorr(pk, sig) => Some((*pk, *sig)),
+            Self::Ecdsa(_, _) => None,
+            Self::Schnorr(pk, sig) => Some((*pk, *sig)),
         }
     }
 }
@@ -94,8 +94,8 @@ enum BitcoinKey {
 impl BitcoinKey {
     fn to_pubkeyhash(self, sig_type: SigType) -> hash160::Hash {
         match self {
-            BitcoinKey::Fullkey(pk) => pk.to_pubkeyhash(sig_type),
-            BitcoinKey::XOnlyPublicKey(pk) => pk.to_pubkeyhash(sig_type),
+            Self::Fullkey(pk) => pk.to_pubkeyhash(sig_type),
+            Self::XOnlyPublicKey(pk) => pk.to_pubkeyhash(sig_type),
         }
     }
 }
@@ -104,18 +104,18 @@ impl BitcoinKey {
 impl fmt::Display for BitcoinKey {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            BitcoinKey::Fullkey(pk) => pk.to_public_key().fmt(f),
-            BitcoinKey::XOnlyPublicKey(pk) => pk.to_public_key().fmt(f),
+            Self::Fullkey(pk) => pk.to_public_key().fmt(f),
+            Self::XOnlyPublicKey(pk) => pk.to_public_key().fmt(f),
         }
     }
 }
 
 impl From<bitcoin::PublicKey> for BitcoinKey {
-    fn from(pk: bitcoin::PublicKey) -> Self { BitcoinKey::Fullkey(pk) }
+    fn from(pk: bitcoin::PublicKey) -> Self { Self::Fullkey(pk) }
 }
 
 impl From<bitcoin::key::XOnlyPublicKey> for BitcoinKey {
-    fn from(xpk: bitcoin::key::XOnlyPublicKey) -> Self { BitcoinKey::XOnlyPublicKey(xpk) }
+    fn from(xpk: bitcoin::key::XOnlyPublicKey) -> Self { Self::XOnlyPublicKey(xpk) }
 }
 
 impl MiniscriptKey for BitcoinKey {
@@ -126,8 +126,8 @@ impl MiniscriptKey for BitcoinKey {
 
     fn is_uncompressed(&self) -> bool {
         match *self {
-            BitcoinKey::Fullkey(pk) => !pk.compressed,
-            BitcoinKey::XOnlyPublicKey(_) => false,
+            Self::Fullkey(pk) => !pk.compressed,
+            Self::XOnlyPublicKey(_) => false,
         }
     }
 }

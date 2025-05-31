@@ -20,21 +20,19 @@ pub(crate) trait ItemSize {
 impl<Pk: MiniscriptKey> ItemSize for Placeholder<Pk> {
     fn size(&self) -> usize {
         match self {
-            Placeholder::Pubkey(_, size) => *size,
-            Placeholder::PubkeyHash(_, size) => *size,
-            Placeholder::EcdsaSigPk(_) | Placeholder::EcdsaSigPkHash(_) => 73,
-            Placeholder::SchnorrSigPk(_, _, size) | Placeholder::SchnorrSigPkHash(_, _, size) => {
-                size + 1
-            } // +1 for the OP_PUSH
-            Placeholder::HashDissatisfaction
-            | Placeholder::Sha256Preimage(_)
-            | Placeholder::Hash256Preimage(_)
-            | Placeholder::Ripemd160Preimage(_)
-            | Placeholder::Hash160Preimage(_) => 33,
-            Placeholder::PushOne => 2, // On legacy this should be 1 ?
-            Placeholder::PushZero => 1,
-            Placeholder::TapScript(s) => s.len() + varint_len(s.len()),
-            Placeholder::TapControlBlock(cb) => {
+            Self::Pubkey(_, size) => *size,
+            Self::PubkeyHash(_, size) => *size,
+            Self::EcdsaSigPk(_) | Self::EcdsaSigPkHash(_) => 73,
+            Self::SchnorrSigPk(_, _, size) | Self::SchnorrSigPkHash(_, _, size) => size + 1, // +1 for the OP_PUSH
+            Self::HashDissatisfaction
+            | Self::Sha256Preimage(_)
+            | Self::Hash256Preimage(_)
+            | Self::Ripemd160Preimage(_)
+            | Self::Hash160Preimage(_) => 33,
+            Self::PushOne => 2, // On legacy this should be 1 ?
+            Self::PushZero => 1,
+            Self::TapScript(s) => s.len() + varint_len(s.len()),
+            Self::TapControlBlock(cb) => {
                 let block_len = cb.serialize().len();
                 block_len + varint_len(block_len)
             }

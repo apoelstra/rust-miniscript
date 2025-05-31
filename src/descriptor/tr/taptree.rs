@@ -33,11 +33,11 @@ pub struct TapTree<Pk: MiniscriptKey> {
 impl<Pk: MiniscriptKey> TapTree<Pk> {
     /// Creates a `TapTree` leaf from a Miniscript.
     pub fn leaf<A: Into<Arc<Miniscript<Pk, Tap>>>>(ms: A) -> Self {
-        TapTree { depths_leaves: vec![(0, ms.into())] }
+        Self { depths_leaves: vec![(0, ms.into())] }
     }
 
     /// Creates a `TapTree` by combining `left` and `right` tree nodes.
-    pub fn combine(left: TapTree<Pk>, right: TapTree<Pk>) -> Result<Self, TapTreeDepthError> {
+    pub fn combine(left: Self, right: Self) -> Result<Self, TapTreeDepthError> {
         let mut depths_leaves =
             Vec::with_capacity(left.depths_leaves.len() + right.depths_leaves.len());
         for (depth, leaf) in left.depths_leaves.iter().chain(right.depths_leaves.iter()) {

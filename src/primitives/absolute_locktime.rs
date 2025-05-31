@@ -50,7 +50,7 @@ impl AbsLockTime {
     /// Constructs an `AbsLockTime` from an nLockTime value or the argument to `CHEKCLOCKTIMEVERIFY`.
     pub fn from_consensus(n: u32) -> Result<Self, AbsLockTimeError> {
         if n >= MIN_ABSOLUTE_LOCKTIME && n <= MAX_ABSOLUTE_LOCKTIME {
-            Ok(AbsLockTime(absolute::LockTime::from_consensus(n)))
+            Ok(Self(absolute::LockTime::from_consensus(n)))
         } else {
             Err(AbsLockTimeError { value: n })
         }
@@ -71,7 +71,7 @@ impl AbsLockTime {
 }
 
 impl From<AbsLockTime> for absolute::LockTime {
-    fn from(lock_time: AbsLockTime) -> absolute::LockTime { lock_time.0 }
+    fn from(lock_time: AbsLockTime) -> Self { lock_time.0 }
 }
 
 impl cmp::PartialOrd for AbsLockTime {

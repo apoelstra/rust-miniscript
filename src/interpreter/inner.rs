@@ -418,7 +418,7 @@ mod tests {
     }
 
     impl KeyTestData {
-        fn from_key(key: bitcoin::PublicKey) -> KeyTestData {
+        fn from_key(key: bitcoin::PublicKey) -> Self {
             // what a funny looking signature..
             let dummy_sig_vec = hex::decode_to_vec(
                 "\
@@ -434,7 +434,7 @@ mod tests {
             let wpkh_spk = bitcoin::ScriptBuf::new_p2wpkh(&wpkhash);
             let wpkh_scripthash = hash160::Hash::hash(wpkh_spk.as_bytes()).into();
 
-            KeyTestData {
+            Self {
                 pk_spk: bitcoin::ScriptBuf::new_p2pk(&key),
                 pkh_spk: bitcoin::ScriptBuf::new_p2pkh(&pkhash),
                 pk_sig: script::Builder::new().push_slice(dummy_sig).into_script(),

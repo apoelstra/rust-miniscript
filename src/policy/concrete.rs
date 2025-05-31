@@ -120,12 +120,12 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     fn check_binary_ops(&self) -> Result<(), CompilerError> {
         for policy in self.pre_order_iter() {
             match *policy {
-                Policy::And(ref subs) => {
+                Self::And(ref subs) => {
                     if subs.len() != 2 {
                         return Err(CompilerError::NonBinaryArgAnd);
                     }
                 }
-                Policy::Or(ref subs) => {
+                Self::Or(ref subs) => {
                     if subs.len() != 2 {
                         return Err(CompilerError::NonBinaryArgOr);
                     }
@@ -165,11 +165,11 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
 
     /// Extracts the internal_key from this policy tree.
     #[cfg(feature = "compiler")]
-    fn extract_key(self, unspendable_key: Option<Pk>) -> Result<(Pk, Policy<Pk>), CompilerError> {
+    fn extract_key(self, unspendable_key: Option<Pk>) -> Result<(Pk, Self), CompilerError> {
         let internal_key = self
             .tapleaf_probability_iter()
             .filter_map(|(prob, ref pol)| match pol {
-                Policy::Key(pk) => Some((OrdF64(prob), pk)),
+                Self::Key(pk) => Some((OrdF64(prob), pk)),
                 _ => None,
             })
             .max_by_key(|(prob, _)| *prob)
@@ -213,12 +213,12 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
                 let tree = Descriptor::new_tr(
                     internal_key,
                     match policy {
-                        Policy::Trivial => None,
+                        Self::Trivial => None,
                         policy => {
                             let mut leaf_compilations: Vec<(OrdF64, Miniscript<Pk, Tap>)> = vec![];
                             for (prob, pol) in policy.tapleaf_probability_iter() {
                                 // policy corresponding to the key (replaced by unsatisfiable) is skipped
-                                if *pol == Policy::Unsatisfiable {
+                                if *pol == Self::Unsatisfiable {
                                     continue;
                                 }
                                 let compilation = compiler::best_compilation::<Pk, Tap>(pol)?;
@@ -274,12 +274,12 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
                 let tree = Descriptor::new_tr(
                     internal_key,
                     match policy {
-                        Policy::Trivial => None,
+                        Self::Trivial => None,
                         policy => {
                             let leaf_compilations: Vec<_> = policy
                                 .enumerate_policy_tree(1.0)
                                 .into_iter()
-                                .filter(|x| x.1 != Arc::new(Policy::Unsatisfiable))
+                                .filter(|x| x.1 != Arc::new(Self::Unsatisfiable))
                                 .map(|(prob, pol)| {
                                     (
                                         OrdF64(prob),
@@ -370,20 +370,20 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     #[cfg(feature = "compiler")]
     fn enumerate_pol(&self, prob: f64) -> Vec<(f64, Arc<Self>)> {
         match self {
-            Policy::Or(subs) => {
+            Self::Or(subs) => {
                 let total_odds = subs.iter().fold(0, |acc, x| acc + x.0);
                 subs.iter()
                     .map(|(odds, pol)| (prob * *odds as f64 / total_odds as f64, pol.clone()))
                     .collect::<Vec<_>>()
             }
-            Policy::Thresh(ref thresh) if thresh.is_or() => {
+            Self::Thresh(ref thresh) if thresh.is_or() => {
                 let total_odds = thresh.n();
                 thresh
                     .iter()
                     .map(|pol| (prob / total_odds as f64, pol.clone()))
                     .collect::<Vec<_>>()
             }
-            Policy::Thresh(ref thresh) if !thresh.is_and() => generate_combination(thresh, prob),
+            Self::Thresh(ref thresh) if !thresh.is_and() => generate_combination(thresh, prob),
             pol => vec![(prob, Arc::new(pol.clone()))],
         }
     }
@@ -421,7 +421,7 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
         'outer: loop {
             //--- FIND a plausible node ---
             let mut prob: Reverse<OrdF64> = Reverse(OrdF64(0.0));
-            let mut curr_policy: Arc<Self> = Arc::new(Policy::Unsatisfiable);
+            let mut curr_policy: Arc<Self> = Arc::new(Self::Unsatisfiable);
             let mut curr_pol_replace_vec: Vec<(f64, Arc<Self>)> = vec![];
             let mut no_more_enum = false;
 
@@ -495,7 +495,7 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
 impl<Pk: MiniscriptKey> ForEachKey<Pk> for Policy<Pk> {
     fn for_each_key<'a, F: FnMut(&'a Pk) -> bool>(&'a self, mut pred: F) -> bool {
         self.pre_order_iter().all(|policy| match policy {
-            Policy::Key(ref pk) => pred(pk),
+            Self::Key(ref pk) => pred(pk),
             _ => true,
         })
     }
@@ -509,26 +509,29 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     where
         T: Translator<Pk>,
     {
-        use Policy::*;
-
         let mut translated = vec![];
         for data in self.rtl_post_order_iter() {
             let new_policy = match data.node {
-                Unsatisfiable => Unsatisfiable,
-                Trivial => Trivial,
-                Key(ref pk) => t.pk(pk).map(Key)?,
-                Sha256(ref h) => t.sha256(h).map(Sha256)?,
-                Hash256(ref h) => t.hash256(h).map(Hash256)?,
-                Ripemd160(ref h) => t.ripemd160(h).map(Ripemd160)?,
-                Hash160(ref h) => t.hash160(h).map(Hash160)?,
-                Older(ref n) => Older(*n),
-                After(ref n) => After(*n),
-                And(ref subs) => And((0..subs.len()).map(|_| translated.pop().unwrap()).collect()),
-                Or(ref subs) => Or(subs
-                    .iter()
-                    .map(|(prob, _)| (*prob, translated.pop().unwrap()))
-                    .collect()),
-                Thresh(ref thresh) => Thresh(thresh.map_ref(|_| translated.pop().unwrap())),
+                Self::Unsatisfiable => Policy::Unsatisfiable,
+                Self::Trivial => Policy::Trivial,
+                Self::Key(ref pk) => t.pk(pk).map(Policy::Key)?,
+                Self::Sha256(ref h) => t.sha256(h).map(Policy::Sha256)?,
+                Self::Hash256(ref h) => t.hash256(h).map(Policy::Hash256)?,
+                Self::Ripemd160(ref h) => t.ripemd160(h).map(Policy::Ripemd160)?,
+                Self::Hash160(ref h) => t.hash160(h).map(Policy::Hash160)?,
+                Self::Older(ref n) => Policy::Older(*n),
+                Self::After(ref n) => Policy::After(*n),
+                Self::And(ref subs) => {
+                    Policy::And((0..subs.len()).map(|_| translated.pop().unwrap()).collect())
+                }
+                Self::Or(ref subs) => Policy::Or(
+                    subs.iter()
+                        .map(|(prob, _)| (*prob, translated.pop().unwrap()))
+                        .collect(),
+                ),
+                Self::Thresh(ref thresh) => {
+                    Policy::Thresh(thresh.map_ref(|_| translated.pop().unwrap()))
+                }
             };
             translated.push(Arc::new(new_policy));
         }
@@ -539,21 +542,22 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     }
 
     /// Translates `Concrete::Key(key)` to `Concrete::Unsatisfiable` when extracting `TapKey`.
-    pub fn translate_unsatisfiable_pk(self, key: &Pk) -> Policy<Pk> {
-        use Policy::*;
-
+    pub fn translate_unsatisfiable_pk(self, key: &Pk) -> Self {
         let mut translated = vec![];
         for data in Arc::new(self).rtl_post_order_iter() {
             let new_policy = match data.node.as_ref() {
-                Policy::Key(ref k) if k.clone() == *key => Some(Policy::Unsatisfiable),
-                And(ref subs) => {
-                    Some(And((0..subs.len()).map(|_| translated.pop().unwrap()).collect()))
+                Self::Key(ref k) if k.clone() == *key => Some(Self::Unsatisfiable),
+                Self::And(ref subs) => {
+                    Some(Self::And((0..subs.len()).map(|_| translated.pop().unwrap()).collect()))
                 }
-                Or(ref subs) => Some(Or(subs
-                    .iter()
-                    .map(|(prob, _)| (*prob, translated.pop().unwrap()))
-                    .collect())),
-                Thresh(ref thresh) => Some(Thresh(thresh.map_ref(|_| translated.pop().unwrap()))),
+                Self::Or(ref subs) => Some(Self::Or(
+                    subs.iter()
+                        .map(|(prob, _)| (*prob, translated.pop().unwrap()))
+                        .collect(),
+                )),
+                Self::Thresh(ref thresh) => {
+                    Some(Self::Thresh(thresh.map_ref(|_| translated.pop().unwrap())))
+                }
                 _ => None,
             };
             match new_policy {
@@ -571,7 +575,7 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     pub fn keys(&self) -> Vec<&Pk> {
         self.pre_order_iter()
             .filter_map(|policy| match policy {
-                Policy::Key(ref pk) => Some(pk),
+                Self::Key(ref pk) => Some(pk),
                 _ => None,
             })
             .collect()
@@ -624,34 +628,32 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     ///
     /// A single `TimelockInfo` that is the combination of all others after processing each node.
     fn timelock_info(&self) -> TimelockInfo {
-        use Policy::*;
-
         let mut infos = vec![];
         for data in self.rtl_post_order_iter() {
             let info = match data.node {
-                Policy::After(ref t) => TimelockInfo {
+                Self::After(ref t) => TimelockInfo {
                     csv_with_height: false,
                     csv_with_time: false,
                     cltv_with_height: absolute::LockTime::from(*t).is_block_height(),
                     cltv_with_time: absolute::LockTime::from(*t).is_block_time(),
                     contains_combination: false,
                 },
-                Policy::Older(ref t) => TimelockInfo {
+                Self::Older(ref t) => TimelockInfo {
                     csv_with_height: t.is_height_locked(),
                     csv_with_time: t.is_time_locked(),
                     cltv_with_height: false,
                     cltv_with_time: false,
                     contains_combination: false,
                 },
-                And(ref subs) => {
+                Self::And(ref subs) => {
                     let iter = (0..subs.len()).map(|_| infos.pop().unwrap());
                     TimelockInfo::combine_threshold(subs.len(), iter)
                 }
-                Or(ref subs) => {
+                Self::Or(ref subs) => {
                     let iter = (0..subs.len()).map(|_| infos.pop().unwrap());
                     TimelockInfo::combine_threshold(1, iter)
                 }
-                Thresh(ref thresh) => {
+                Self::Thresh(ref thresh) => {
                     let iter = (0..thresh.n()).map(|_| infos.pop().unwrap());
                     TimelockInfo::combine_threshold(thresh.k(), iter)
                 }
@@ -671,22 +673,23 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
     /// Returns a tuple `(safe, non-malleable)` to avoid the fact that
     /// non-malleability depends on safety and we would like to cache results.
     pub fn is_safe_nonmalleable(&self) -> (bool, bool) {
-        use Policy::*;
-
         let mut acc = vec![];
         for data in self.rtl_post_order_iter() {
             let new = match data.node {
-                Unsatisfiable | Trivial | Key(_) => (true, true),
-                Sha256(_) | Hash256(_) | Ripemd160(_) | Hash160(_) | After(_) | Older(_) => {
-                    (false, true)
-                }
-                And(ref subs) => {
+                Self::Unsatisfiable | Self::Trivial | Self::Key(_) => (true, true),
+                Self::Sha256(_)
+                | Self::Hash256(_)
+                | Self::Ripemd160(_)
+                | Self::Hash160(_)
+                | Self::After(_)
+                | Self::Older(_) => (false, true),
+                Self::And(ref subs) => {
                     let (atleast_one_safe, all_non_mall) = (0..subs.len())
                         .map(|_| acc.pop().unwrap())
                         .fold((false, true), |acc, x: (bool, bool)| (acc.0 || x.0, acc.1 && x.1));
                     (atleast_one_safe, all_non_mall)
                 }
-                Or(ref subs) => {
+                Self::Or(ref subs) => {
                     let (all_safe, atleast_one_safe, all_non_mall) = (0..subs.len())
                         .map(|_| acc.pop().unwrap())
                         .fold((true, false, true), |acc, x| {
@@ -694,7 +697,7 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
                         });
                     (all_safe, atleast_one_safe && all_non_mall)
                 }
-                Thresh(ref thresh) => {
+                Self::Thresh(ref thresh) => {
                     let (safe_count, non_mall_count) = (0..thresh.n())
                         .map(|_| acc.pop().unwrap())
                         .fold((0, 0), |(safe_count, non_mall_count), (safe, non_mall)| {
@@ -716,16 +719,16 @@ impl<Pk: MiniscriptKey> Policy<Pk> {
 impl<Pk: MiniscriptKey> fmt::Debug for Policy<Pk> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Policy::Unsatisfiable => f.write_str("UNSATISFIABLE()"),
-            Policy::Trivial => f.write_str("TRIVIAL()"),
-            Policy::Key(ref pk) => write!(f, "pk({:?})", pk),
-            Policy::After(n) => write!(f, "after({})", n),
-            Policy::Older(n) => write!(f, "older({})", n),
-            Policy::Sha256(ref h) => write!(f, "sha256({})", h),
-            Policy::Hash256(ref h) => write!(f, "hash256({})", h),
-            Policy::Ripemd160(ref h) => write!(f, "ripemd160({})", h),
-            Policy::Hash160(ref h) => write!(f, "hash160({})", h),
-            Policy::And(ref subs) => {
+            Self::Unsatisfiable => f.write_str("UNSATISFIABLE()"),
+            Self::Trivial => f.write_str("TRIVIAL()"),
+            Self::Key(ref pk) => write!(f, "pk({:?})", pk),
+            Self::After(n) => write!(f, "after({})", n),
+            Self::Older(n) => write!(f, "older({})", n),
+            Self::Sha256(ref h) => write!(f, "sha256({})", h),
+            Self::Hash256(ref h) => write!(f, "hash256({})", h),
+            Self::Ripemd160(ref h) => write!(f, "ripemd160({})", h),
+            Self::Hash160(ref h) => write!(f, "hash160({})", h),
+            Self::And(ref subs) => {
                 f.write_str("and(")?;
                 if !subs.is_empty() {
                     write!(f, "{:?}", subs[0])?;
@@ -735,7 +738,7 @@ impl<Pk: MiniscriptKey> fmt::Debug for Policy<Pk> {
                 }
                 f.write_str(")")
             }
-            Policy::Or(ref subs) => {
+            Self::Or(ref subs) => {
                 f.write_str("or(")?;
                 if !subs.is_empty() {
                     write!(f, "{}@{:?}", subs[0].0, subs[0].1)?;
@@ -745,7 +748,7 @@ impl<Pk: MiniscriptKey> fmt::Debug for Policy<Pk> {
                 }
                 f.write_str(")")
             }
-            Policy::Thresh(ref thresh) => fmt::Debug::fmt(&thresh.debug("thresh", true), f),
+            Self::Thresh(ref thresh) => fmt::Debug::fmt(&thresh.debug("thresh", true), f),
         }
     }
 }
@@ -753,16 +756,16 @@ impl<Pk: MiniscriptKey> fmt::Debug for Policy<Pk> {
 impl<Pk: MiniscriptKey> fmt::Display for Policy<Pk> {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Policy::Unsatisfiable => f.write_str("UNSATISFIABLE"),
-            Policy::Trivial => f.write_str("TRIVIAL"),
-            Policy::Key(ref pk) => write!(f, "pk({})", pk),
-            Policy::After(n) => write!(f, "after({})", n),
-            Policy::Older(n) => write!(f, "older({})", n),
-            Policy::Sha256(ref h) => write!(f, "sha256({})", h),
-            Policy::Hash256(ref h) => write!(f, "hash256({})", h),
-            Policy::Ripemd160(ref h) => write!(f, "ripemd160({})", h),
-            Policy::Hash160(ref h) => write!(f, "hash160({})", h),
-            Policy::And(ref subs) => {
+            Self::Unsatisfiable => f.write_str("UNSATISFIABLE"),
+            Self::Trivial => f.write_str("TRIVIAL"),
+            Self::Key(ref pk) => write!(f, "pk({})", pk),
+            Self::After(n) => write!(f, "after({})", n),
+            Self::Older(n) => write!(f, "older({})", n),
+            Self::Sha256(ref h) => write!(f, "sha256({})", h),
+            Self::Hash256(ref h) => write!(f, "hash256({})", h),
+            Self::Ripemd160(ref h) => write!(f, "ripemd160({})", h),
+            Self::Hash160(ref h) => write!(f, "hash160({})", h),
+            Self::And(ref subs) => {
                 f.write_str("and(")?;
                 if !subs.is_empty() {
                     write!(f, "{}", subs[0])?;
@@ -772,7 +775,7 @@ impl<Pk: MiniscriptKey> fmt::Display for Policy<Pk> {
                 }
                 f.write_str(")")
             }
-            Policy::Or(ref subs) => {
+            Self::Or(ref subs) => {
                 f.write_str("or(")?;
                 if !subs.is_empty() {
                     write!(f, "{}@{}", subs[0].0, subs[0].1)?;
@@ -782,16 +785,16 @@ impl<Pk: MiniscriptKey> fmt::Display for Policy<Pk> {
                 }
                 f.write_str(")")
             }
-            Policy::Thresh(ref thresh) => fmt::Display::fmt(&thresh.display("thresh", true), f),
+            Self::Thresh(ref thresh) => fmt::Display::fmt(&thresh.display("thresh", true), f),
         }
     }
 }
 
 impl<Pk: FromStrKey> str::FromStr for Policy<Pk> {
     type Err = Error;
-    fn from_str(s: &str) -> Result<Policy<Pk>, Error> {
+    fn from_str(s: &str) -> Result<Self, Error> {
         let tree = expression::Tree::from_str(s).map_err(Error::Parse)?;
-        let policy = Policy::<Pk>::from_tree(tree.root())?;
+        let policy = Self::from_tree(tree.root())?;
         policy
             .validate(&ValidationParams::SANE)
             .map_err(Error::Validation)?;
@@ -803,7 +806,7 @@ serde_string_impl_pk!(Policy, "a miniscript concrete policy");
 
 impl<Pk: FromStrKey> Policy<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(root: expression::TreeIterItem) -> Result<Policy<Pk>, Error> {
+    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, Error> {
         root.verify_no_curly_braces()
             .map_err(From::from)
             .map_err(Error::Parse)?;
@@ -853,47 +856,47 @@ impl<Pk: FromStrKey> Policy<Pk> {
                         node.verify_n_children("UNSATISFIABLE", 0..=0)
                             .map_err(From::from)
                             .map_err(Error::Parse)?;
-                        Ok(Policy::Unsatisfiable)
+                        Ok(Self::Unsatisfiable)
                     }
                     "TRIVIAL" => {
                         node.verify_n_children("TRIVIAL", 0..=0)
                             .map_err(From::from)
                             .map_err(Error::Parse)?;
-                        Ok(Policy::Trivial)
+                        Ok(Self::Trivial)
                     }
                     "pk" => node
                         .verify_terminal_parent("pk", "public key")
-                        .map(Policy::Key)
+                        .map(Self::Key)
                         .map_err(Error::Parse),
-                    "after" => node.verify_after().map_err(Error::Parse).map(Policy::After),
-                    "older" => node.verify_older().map_err(Error::Parse).map(Policy::Older),
+                    "after" => node.verify_after().map_err(Error::Parse).map(Self::After),
+                    "older" => node.verify_older().map_err(Error::Parse).map(Self::Older),
                     "sha256" => node
                         .verify_terminal_parent("sha256", "hash")
-                        .map(Policy::Sha256)
+                        .map(Self::Sha256)
                         .map_err(Error::Parse),
                     "hash256" => node
                         .verify_terminal_parent("hash256", "hash")
-                        .map(Policy::Hash256)
+                        .map(Self::Hash256)
                         .map_err(Error::Parse),
                     "ripemd160" => node
                         .verify_terminal_parent("ripemd160", "hash")
-                        .map(Policy::Ripemd160)
+                        .map(Self::Ripemd160)
                         .map_err(Error::Parse),
                     "hash160" => node
                         .verify_terminal_parent("hash160", "hash")
-                        .map(Policy::Hash160)
+                        .map(Self::Hash160)
                         .map_err(Error::Parse),
                     "and" => {
                         node.verify_n_children("and", 2..=2)
                             .map_err(From::from)
                             .map_err(Error::Parse)?;
-                        Ok(Policy::And(vec![stack.pop().unwrap().1, stack.pop().unwrap().1]))
+                        Ok(Self::And(vec![stack.pop().unwrap().1, stack.pop().unwrap().1]))
                     }
                     "or" => {
                         node.verify_n_children("or", 2..=2)
                             .map_err(From::from)
                             .map_err(Error::Parse)?;
-                        Ok(Policy::Or(vec![stack.pop().unwrap(), stack.pop().unwrap()]))
+                        Ok(Self::Or(vec![stack.pop().unwrap(), stack.pop().unwrap()]))
                     }
                     "thresh" => node
                         .verify_threshold(|_| Ok(stack.pop().unwrap().1))

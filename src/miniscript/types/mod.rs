@@ -1,5 +1,7 @@
 // SPDX-License-Identifier: CC0-1.0
 
+#![allow(clippy::use_self)] // Type has same length as Self and no generics
+
 //! Miniscript Types
 //!
 //! Contains structures representing Miniscript types and utility functions

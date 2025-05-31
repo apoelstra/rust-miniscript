@@ -40,110 +40,110 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Terminal<Pk, Ctx> {
         Pk: ToPublicKey,
     {
         match *self {
-            Terminal::PkK(ref pk) => builder.push_ms_key::<_, Ctx>(pk),
-            Terminal::PkH(ref pk) => builder
+            Self::PkK(ref pk) => builder.push_ms_key::<_, Ctx>(pk),
+            Self::PkH(ref pk) => builder
                 .push_opcode(opcodes::all::OP_DUP)
                 .push_opcode(opcodes::all::OP_HASH160)
                 .push_ms_key_hash::<_, Ctx>(pk)
                 .push_opcode(opcodes::all::OP_EQUALVERIFY),
-            Terminal::RawPkH(ref hash) => builder
+            Self::RawPkH(ref hash) => builder
                 .push_opcode(opcodes::all::OP_DUP)
                 .push_opcode(opcodes::all::OP_HASH160)
                 .push_slice(hash.to_byte_array())
                 .push_opcode(opcodes::all::OP_EQUALVERIFY),
-            Terminal::After(t) => builder
+            Self::After(t) => builder
                 .push_int(absolute::LockTime::from(t).to_consensus_u32() as i64)
                 .push_opcode(opcodes::all::OP_CLTV),
-            Terminal::Older(t) => builder
+            Self::Older(t) => builder
                 .push_int(t.to_consensus_u32().into())
                 .push_opcode(opcodes::all::OP_CSV),
-            Terminal::Sha256(ref h) => builder
+            Self::Sha256(ref h) => builder
                 .push_opcode(opcodes::all::OP_SIZE)
                 .push_int(32)
                 .push_opcode(opcodes::all::OP_EQUALVERIFY)
                 .push_opcode(opcodes::all::OP_SHA256)
                 .push_slice(Pk::to_sha256(h).to_byte_array())
                 .push_opcode(opcodes::all::OP_EQUAL),
-            Terminal::Hash256(ref h) => builder
+            Self::Hash256(ref h) => builder
                 .push_opcode(opcodes::all::OP_SIZE)
                 .push_int(32)
                 .push_opcode(opcodes::all::OP_EQUALVERIFY)
                 .push_opcode(opcodes::all::OP_HASH256)
                 .push_slice(Pk::to_hash256(h).to_byte_array())
                 .push_opcode(opcodes::all::OP_EQUAL),
-            Terminal::Ripemd160(ref h) => builder
+            Self::Ripemd160(ref h) => builder
                 .push_opcode(opcodes::all::OP_SIZE)
                 .push_int(32)
                 .push_opcode(opcodes::all::OP_EQUALVERIFY)
                 .push_opcode(opcodes::all::OP_RIPEMD160)
                 .push_slice(Pk::to_ripemd160(h).to_byte_array())
                 .push_opcode(opcodes::all::OP_EQUAL),
-            Terminal::Hash160(ref h) => builder
+            Self::Hash160(ref h) => builder
                 .push_opcode(opcodes::all::OP_SIZE)
                 .push_int(32)
                 .push_opcode(opcodes::all::OP_EQUALVERIFY)
                 .push_opcode(opcodes::all::OP_HASH160)
                 .push_slice(Pk::to_hash160(h).to_byte_array())
                 .push_opcode(opcodes::all::OP_EQUAL),
-            Terminal::True => builder.push_opcode(opcodes::OP_TRUE),
-            Terminal::False => builder.push_opcode(opcodes::OP_FALSE),
-            Terminal::Alt(ref sub) => builder
+            Self::True => builder.push_opcode(opcodes::OP_TRUE),
+            Self::False => builder.push_opcode(opcodes::OP_FALSE),
+            Self::Alt(ref sub) => builder
                 .push_opcode(opcodes::all::OP_TOALTSTACK)
                 .push_astelem(sub)
                 .push_opcode(opcodes::all::OP_FROMALTSTACK),
-            Terminal::Swap(ref sub) => builder.push_opcode(opcodes::all::OP_SWAP).push_astelem(sub),
-            Terminal::Check(ref sub) => builder
+            Self::Swap(ref sub) => builder.push_opcode(opcodes::all::OP_SWAP).push_astelem(sub),
+            Self::Check(ref sub) => builder
                 .push_astelem(sub)
                 .push_opcode(opcodes::all::OP_CHECKSIG),
-            Terminal::DupIf(ref sub) => builder
+            Self::DupIf(ref sub) => builder
                 .push_opcode(opcodes::all::OP_DUP)
                 .push_opcode(opcodes::all::OP_IF)
                 .push_astelem(sub)
                 .push_opcode(opcodes::all::OP_ENDIF),
-            Terminal::Verify(ref sub) => builder.push_astelem(sub).push_verify(),
-            Terminal::NonZero(ref sub) => builder
+            Self::Verify(ref sub) => builder.push_astelem(sub).push_verify(),
+            Self::NonZero(ref sub) => builder
                 .push_opcode(opcodes::all::OP_SIZE)
                 .push_opcode(opcodes::all::OP_0NOTEQUAL)
                 .push_opcode(opcodes::all::OP_IF)
                 .push_astelem(sub)
                 .push_opcode(opcodes::all::OP_ENDIF),
-            Terminal::ZeroNotEqual(ref sub) => builder
+            Self::ZeroNotEqual(ref sub) => builder
                 .push_astelem(sub)
                 .push_opcode(opcodes::all::OP_0NOTEQUAL),
-            Terminal::AndV(ref left, ref right) => builder.push_astelem(left).push_astelem(right),
-            Terminal::AndB(ref left, ref right) => builder
+            Self::AndV(ref left, ref right) => builder.push_astelem(left).push_astelem(right),
+            Self::AndB(ref left, ref right) => builder
                 .push_astelem(left)
                 .push_astelem(right)
                 .push_opcode(opcodes::all::OP_BOOLAND),
-            Terminal::AndOr(ref a, ref b, ref c) => builder
+            Self::AndOr(ref a, ref b, ref c) => builder
                 .push_astelem(a)
                 .push_opcode(opcodes::all::OP_NOTIF)
                 .push_astelem(c)
                 .push_opcode(opcodes::all::OP_ELSE)
                 .push_astelem(b)
                 .push_opcode(opcodes::all::OP_ENDIF),
-            Terminal::OrB(ref left, ref right) => builder
+            Self::OrB(ref left, ref right) => builder
                 .push_astelem(left)
                 .push_astelem(right)
                 .push_opcode(opcodes::all::OP_BOOLOR),
-            Terminal::OrD(ref left, ref right) => builder
+            Self::OrD(ref left, ref right) => builder
                 .push_astelem(left)
                 .push_opcode(opcodes::all::OP_IFDUP)
                 .push_opcode(opcodes::all::OP_NOTIF)
                 .push_astelem(right)
                 .push_opcode(opcodes::all::OP_ENDIF),
-            Terminal::OrC(ref left, ref right) => builder
+            Self::OrC(ref left, ref right) => builder
                 .push_astelem(left)
                 .push_opcode(opcodes::all::OP_NOTIF)
                 .push_astelem(right)
                 .push_opcode(opcodes::all::OP_ENDIF),
-            Terminal::OrI(ref left, ref right) => builder
+            Self::OrI(ref left, ref right) => builder
                 .push_opcode(opcodes::all::OP_IF)
                 .push_astelem(left)
                 .push_opcode(opcodes::all::OP_ELSE)
                 .push_astelem(right)
                 .push_opcode(opcodes::all::OP_ENDIF),
-            Terminal::Thresh(ref thresh) => {
+            Self::Thresh(ref thresh) => {
                 builder = builder.push_astelem(&thresh.data()[0]);
                 for sub in &thresh.data()[1..] {
                     builder = builder.push_astelem(sub).push_opcode(opcodes::all::OP_ADD);
@@ -152,7 +152,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Terminal<Pk, Ctx> {
                     .push_int(thresh.k() as i64)
                     .push_opcode(opcodes::all::OP_EQUAL)
             }
-            Terminal::Multi(ref thresh) => {
+            Self::Multi(ref thresh) => {
                 debug_assert!(Ctx::sig_type() == SigType::Ecdsa);
                 builder = builder.push_int(thresh.k() as i64);
                 for pk in thresh.data() {
@@ -162,7 +162,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Terminal<Pk, Ctx> {
                     .push_int(thresh.n() as i64)
                     .push_opcode(opcodes::all::OP_CHECKMULTISIG)
             }
-            Terminal::MultiA(ref thresh) => {
+            Self::MultiA(ref thresh) => {
                 debug_assert!(Ctx::sig_type() == SigType::Schnorr);
                 // keys must be atleast len 1 here, guaranteed by typing rules
                 builder = builder.push_ms_key::<_, Ctx>(&thresh.data()[0]);

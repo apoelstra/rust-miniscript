@@ -30,17 +30,17 @@ pub enum Element<'txin> {
 }
 
 impl<'txin> From<&'txin Vec<u8>> for Element<'txin> {
-    fn from(v: &'txin Vec<u8>) -> Element<'txin> { From::from(&v[..]) }
+    fn from(v: &'txin Vec<u8>) -> Self { From::from(&v[..]) }
 }
 
 impl<'txin> From<&'txin [u8]> for Element<'txin> {
-    fn from(v: &'txin [u8]) -> Element<'txin> {
+    fn from(v: &'txin [u8]) -> Self {
         if *v == [1] {
-            Element::Satisfied
+            Self::Satisfied
         } else if v.is_empty() {
-            Element::Dissatisfied
+            Self::Dissatisfied
         } else {
-            Element::Push(v)
+            Self::Push(v)
         }
     }
 }

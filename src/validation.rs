@@ -189,7 +189,7 @@ impl ValidationParams {
     /// The "intersection" is as restrictive as both of them. Alternately, it is the
     /// least restrictive set of parameters which nonetheless entails both.
     pub const fn intersect(&self, other: &Self) -> Self {
-        ValidationParams {
+        Self {
             allow_compressed_keys: self.allow_compressed_keys && other.allow_compressed_keys,
             allow_duplicate_keys: self.allow_duplicate_keys && other.allow_duplicate_keys,
             allow_dup_if: self.allow_dup_if && other.allow_dup_if,
@@ -240,7 +240,7 @@ impl ValidationParams {
     /// The "union" is as non-restrictive as both of them. Alternately, it is the
     /// most restrictive set of parameters which nonetheless is entailed by both.
     pub const fn union(&self, other: &Self) -> Self {
-        ValidationParams {
+        Self {
             allow_compressed_keys: self.allow_compressed_keys || other.allow_compressed_keys,
             allow_duplicate_keys: self.allow_duplicate_keys || other.allow_duplicate_keys,
             allow_dup_if: self.allow_dup_if || other.allow_dup_if,
@@ -374,44 +374,44 @@ pub enum Error {
 impl fmt::Display for Error {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match *self {
-            Error::DuplicateKeys => f.write_str("duplicate public keys"),
-            Error::IllegalDupIf => f.write_str("legacy script with a `dup_if` fragment"),
-            Error::IllegalMulti => f.write_str("non-Taproot script with a `multi_a` fragment"),
-            Error::IllegalMultiA => f.write_str("non-Taproot script with a `multi_a` fragment"),
-            Error::IllegalOrI => f.write_str("legacy script with a `or_i` fragment"),
-            Error::IllegalRawPkh => f.write_str("script with a `expr_raw_pkh` fragment"),
-            Error::Malleable => f.write_str("script has a 3rd-party malleability vector"),
-            Error::MaxOpCountExceeded { actual, limit } => write!(
+            Self::DuplicateKeys => f.write_str("duplicate public keys"),
+            Self::IllegalDupIf => f.write_str("legacy script with a `dup_if` fragment"),
+            Self::IllegalMulti => f.write_str("non-Taproot script with a `multi_a` fragment"),
+            Self::IllegalMultiA => f.write_str("non-Taproot script with a `multi_a` fragment"),
+            Self::IllegalOrI => f.write_str("legacy script with a `or_i` fragment"),
+            Self::IllegalRawPkh => f.write_str("script with a `expr_raw_pkh` fragment"),
+            Self::Malleable => f.write_str("script has a 3rd-party malleability vector"),
+            Self::MaxOpCountExceeded { actual, limit } => write!(
                 f,
                 "a satisfaction path executes at least {} non-push opcodes (limit: {}).",
                 actual, limit
             ),
-            Error::MaxScriptSizeExceeded { actual, limit } => write!(
+            Self::MaxScriptSizeExceeded { actual, limit } => write!(
                 f,
                 "script has size at least {} (limit: {}).",
                 actual, limit
             ),
-            Error::MaxWitnessItemsExceeded { actual, limit } => write!(
+            Self::MaxWitnessItemsExceeded { actual, limit } => write!(
                 f,
                 "a satisfaction path requires at least {} witness items (limit: {}).",
                 actual, limit
             ),
-            Error::MaxExecStackSizeExceeded { actual, limit } => write!(
+            Self::MaxExecStackSizeExceeded { actual, limit } => write!(
                 f,
                 "a satisfaction path requires at least {} items on the stack at once (limit: {}).",
                 actual, limit
             ),
-            Error::MaxRecursiveDepthExceeded { limit } => write!(
+            Self::MaxRecursiveDepthExceeded { limit } => write!(
                 f,
                 "script exceeded the maximum recursive depth limit of {}; if you have a use case for deeper scripts, please file an issue against rust-miniscript",
                 limit
             ),
-            Error::MixedTimeLocks => f.write_str("mixed a height-based and time-based timelock"),
-            Error::MultipathKeyLenMismatch { len1, len2 } => write!(f, "found multipath keys with lengths {} and {}; lengths must match", len1, len2),
-            Error::NonBase(base) => write!(f, "script has type {:?}, which is not allowed for a top-level Miniscript", base),
-            Error::SiglessBranch => f.write_str("all spending paths must require a signature"),
-            Error::Key(ref e) => e.fmt(f),
-            Error::Unsatisfiable => f.write_str("no satisfaction exists for script"),
+            Self::MixedTimeLocks => f.write_str("mixed a height-based and time-based timelock"),
+            Self::MultipathKeyLenMismatch { len1, len2 } => write!(f, "found multipath keys with lengths {} and {}; lengths must match", len1, len2),
+            Self::NonBase(base) => write!(f, "script has type {:?}, which is not allowed for a top-level Miniscript", base),
+            Self::SiglessBranch => f.write_str("all spending paths must require a signature"),
+            Self::Key(ref e) => e.fmt(f),
+            Self::Unsatisfiable => f.write_str("no satisfaction exists for script"),
         }
     }
 }

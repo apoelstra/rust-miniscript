@@ -135,7 +135,7 @@ impl<T: TreeLike> IterStackItem<T> {
     /// Constructor for a new stack item with a given element and relationship
     /// to its parent.
     fn unprocessed(elem: T, parent_stack_idx: Option<usize>) -> Self {
-        IterStackItem {
+        Self {
             processed: false,
             child_indices: Vec::with_capacity(elem.n_children()),
             parent_stack_idx,
@@ -220,15 +220,15 @@ impl<T: TreeLike> TreeLike for Rtl<T> {
     fn nary_len(tc: &Self::NaryChildren) -> usize { T::nary_len(tc) }
     fn nary_index(tc: Self::NaryChildren, idx: usize) -> Self {
         let rtl_idx = T::nary_len(&tc) - idx - 1;
-        Rtl(T::nary_index(tc, rtl_idx))
+        Self(T::nary_index(tc, rtl_idx))
     }
 
     fn as_node(&self) -> Tree<Self, Self::NaryChildren> {
         match self.0.as_node() {
             Tree::Nullary => Tree::Nullary,
-            Tree::Unary(a) => Tree::Unary(Rtl(a)),
-            Tree::Binary(a, b) => Tree::Binary(Rtl(b), Rtl(a)),
-            Tree::Ternary(a, b, c) => Tree::Ternary(Rtl(c), Rtl(b), Rtl(a)),
+            Tree::Unary(a) => Tree::Unary(Self(a)),
+            Tree::Binary(a, b) => Tree::Binary(Self(b), Self(a)),
+            Tree::Ternary(a, b, c) => Tree::Ternary(Self(c), Self(b), Self(a)),
             Tree::Nary(data) => Tree::Nary(data),
         }
     }
@@ -377,7 +377,7 @@ impl<T: TreeLike + Clone> PreOrderIterItem<T> {
     ///
     /// Marks the index as 0. The index must be manually set before yielding.
     fn initial(node: T, parent: Option<T>) -> Self {
-        PreOrderIterItem {
+        Self {
             is_complete: node.n_children() == 0,
             node,
             parent,
@@ -388,7 +388,7 @@ impl<T: TreeLike + Clone> PreOrderIterItem<T> {
 
     /// Creates a `PreOrderIterItem` which yields a given element again.
     fn increment(self, n_children: usize) -> Self {
-        PreOrderIterItem {
+        Self {
             node: self.node,
             index: self.index,
             parent: self.parent,

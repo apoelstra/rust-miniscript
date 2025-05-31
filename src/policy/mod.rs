@@ -116,12 +116,12 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Liftable<Pk> for Miniscript<Pk, Ctx>
 impl<Pk: MiniscriptKey> Liftable<Pk> for Descriptor<Pk> {
     fn lift(&self) -> Result<Semantic<Pk>, ValidationError> {
         match *self {
-            Descriptor::Bare(ref bare) => bare.lift(),
-            Descriptor::Pkh(ref pkh) => pkh.lift(),
-            Descriptor::Wpkh(ref wpkh) => wpkh.lift(),
-            Descriptor::Wsh(ref wsh) => wsh.lift(),
-            Descriptor::Sh(ref sh) => sh.lift(),
-            Descriptor::Tr(ref tr) => tr.lift(),
+            Self::Bare(ref bare) => bare.lift(),
+            Self::Pkh(ref pkh) => pkh.lift(),
+            Self::Wpkh(ref wpkh) => wpkh.lift(),
+            Self::Wsh(ref wsh) => wsh.lift(),
+            Self::Sh(ref sh) => sh.lift(),
+            Self::Tr(ref tr) => tr.lift(),
         }
     }
 }
@@ -134,28 +134,28 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Concrete<Pk> {
     fn lift(&self) -> Result<Semantic<Pk>, ValidationError> {
         self.validate(&ValidationParams::SANE)?;
         let ret = match *self {
-            Concrete::Unsatisfiable => Semantic::Unsatisfiable,
-            Concrete::Trivial => Semantic::Trivial,
-            Concrete::Key(ref pk) => Semantic::Key(pk.clone()),
-            Concrete::After(t) => Semantic::After(t),
-            Concrete::Older(t) => Semantic::Older(t),
-            Concrete::Sha256(ref h) => Semantic::Sha256(h.clone()),
-            Concrete::Hash256(ref h) => Semantic::Hash256(h.clone()),
-            Concrete::Ripemd160(ref h) => Semantic::Ripemd160(h.clone()),
-            Concrete::Hash160(ref h) => Semantic::Hash160(h.clone()),
-            Concrete::And(ref subs) => {
+            Self::Unsatisfiable => Semantic::Unsatisfiable,
+            Self::Trivial => Semantic::Trivial,
+            Self::Key(ref pk) => Semantic::Key(pk.clone()),
+            Self::After(t) => Semantic::After(t),
+            Self::Older(t) => Semantic::Older(t),
+            Self::Sha256(ref h) => Semantic::Sha256(h.clone()),
+            Self::Hash256(ref h) => Semantic::Hash256(h.clone()),
+            Self::Ripemd160(ref h) => Semantic::Ripemd160(h.clone()),
+            Self::Hash160(ref h) => Semantic::Hash160(h.clone()),
+            Self::And(ref subs) => {
                 let semantic_subs: Result<Vec<Semantic<Pk>>, ValidationError> =
                     subs.iter().map(Liftable::lift).collect();
                 let semantic_subs = semantic_subs?.into_iter().map(Arc::new).collect();
                 Semantic::Thresh(Threshold::new(2, semantic_subs).unwrap())
             }
-            Concrete::Or(ref subs) => {
+            Self::Or(ref subs) => {
                 let semantic_subs: Result<Vec<Semantic<Pk>>, ValidationError> =
                     subs.iter().map(|(_p, sub)| sub.lift()).collect();
                 let semantic_subs = semantic_subs?.into_iter().map(Arc::new).collect();
                 Semantic::Thresh(Threshold::new(1, semantic_subs).unwrap())
             }
-            Concrete::Thresh(ref thresh) => {
+            Self::Thresh(ref thresh) => {
                 Semantic::Thresh(thresh.translate_ref(|sub| Liftable::lift(sub).map(Arc::new))?)
             }
         }

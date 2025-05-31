@@ -64,7 +64,7 @@ impl<T, const MAX: usize> Threshold<T, MAX> {
     /// Constructs a threshold directly from a threshold value and collection.
     pub fn new(k: usize, inner: Vec<T>) -> Result<Self, ThresholdError> {
         validate_k_n::<MAX>(k, inner.len())?;
-        Ok(Threshold { k, inner })
+        Ok(Self { k, inner })
     }
 
     /// Constructs a threshold from a threshold value and an iterator that yields collection
@@ -85,13 +85,13 @@ impl<T, const MAX: usize> Threshold<T, MAX> {
     /// Constructor for an "or" represented as a 1-of-2 threshold.
     pub fn or(left: T, right: T) -> Self {
         debug_assert!(MAX == 0 || MAX > 1);
-        Threshold { k: 1, inner: vec![left, right] }
+        Self { k: 1, inner: vec![left, right] }
     }
 
     /// Constructor for an "and" represented as a 2-of-2 threshold.
     pub fn and(left: T, right: T) -> Self {
         debug_assert!(MAX == 0 || MAX > 1);
-        Threshold { k: 2, inner: vec![left, right] }
+        Self { k: 2, inner: vec![left, right] }
     }
 
     /// Whether this threshold is a 1-of-n.
@@ -228,7 +228,7 @@ impl<T> Threshold<T, 0> {
     /// Panics if the passed vector is empty.
     pub fn or_n(inner: Vec<T>) -> Self {
         assert_ne!(inner.len(), 0);
-        Threshold { k: 1, inner }
+        Self { k: 1, inner }
     }
 
     /// Constructor for an "and" represented as a n-of-n threshold.
@@ -238,7 +238,7 @@ impl<T> Threshold<T, 0> {
     /// Panics if the passed vector is empty.
     pub fn and_n(inner: Vec<T>) -> Self {
         assert_ne!(inner.len(), 0);
-        Threshold { k: inner.len(), inner }
+        Self { k: inner.len(), inner }
     }
 }
 
