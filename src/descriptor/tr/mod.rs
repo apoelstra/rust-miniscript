@@ -17,7 +17,7 @@ use crate::util::{varint_len, witness_size};
 use crate::{
     expression, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, ParseMiniscriptError,
     Satisfier, ScriptContext as _, Tap, Threshold, ToPublicKey, TranslateErr, Translator,
-    ValidationError,
+    ValidationError, ValidationParams,
 };
 
 mod spend_info;
@@ -293,14 +293,20 @@ impl<Pk: FromStrKey> core::str::FromStr for Tr<Pk> {
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let expr_tree = expression::Tree::from_str(s)?;
-        Self::from_tree(expr_tree.root())
+        // FIXME using CONSENSUS here but should use SANE; will fix in next commit
+        Self::from_tree(expr_tree.root(), &Tap::CONSENSUS)
     }
 }
 
 impl<Pk: FromStrKey> Tr<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError> {
+    pub fn from_tree(
+        root: expression::TreeIterItem,
+        params: &ValidationParams,
+    ) -> Result<Self, ParseMiniscriptError> {
         use crate::expression::{Parens, ParseTreeError};
+
+        let params = &params.intersect(&Tap::CONSENSUS);
 
         root.verify_toplevel("tr", 1..=2)?;
 
@@ -332,8 +338,7 @@ impl<Pk: FromStrKey> Tr<Pk> {
                 tree_builder.push_inner_node()?;
             } else {
                 let script = Miniscript::from_tree(node)?;
-                // FIXME hack for https://github.com/rust-bitcoin/rust-miniscript/issues/734
-                script.validate(&Tap::CONSENSUS)?;
+                script.validate(params)?;
 
                 tree_builder.push_leaf(script);
                 tap_tree_iter.skip_descendants();

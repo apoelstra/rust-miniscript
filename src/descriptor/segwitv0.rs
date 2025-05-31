@@ -22,6 +22,7 @@ use crate::util::varint_len;
 use crate::{
     expression, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey, ParseMiniscriptError,
     Satisfier, Segwitv0, Threshold, ToPublicKey, TranslateErr, Translator, ValidationError,
+    ValidationParams,
 };
 /// A Segwitv0 wsh descriptor
 #[derive(Clone, Ord, PartialOrd, Eq, PartialEq, Hash)]
@@ -207,14 +208,20 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Wsh<Pk> {
 
 impl<Pk: FromStrKey> Wsh<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(top: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError> {
+    pub fn from_tree(
+        top: expression::TreeIterItem,
+        params: &ValidationParams,
+    ) -> Result<Self, ParseMiniscriptError> {
+        let params = &Segwitv0::CONSENSUS.intersect(params);
         let top = top.verify_toplevel("wsh", 1..=1)?;
 
         if top.name() == "sortedmulti" {
-            return Ok(Wsh { inner: WshInner::SortedMulti(SortedMultiVec::from_tree(top)?) });
+            return Ok(Wsh {
+                inner: WshInner::SortedMulti(SortedMultiVec::from_tree(top, params)?),
+            });
         }
         let sub = Miniscript::from_tree(top)?;
-        sub.validate(&Segwitv0::SANE)?;
+        sub.validate(params)?;
         Ok(Wsh { inner: WshInner::Ms(sub) })
     }
 }
@@ -241,7 +248,7 @@ impl<Pk: FromStrKey> core::str::FromStr for Wsh<Pk> {
     type Err = ParseMiniscriptError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let top = expression::Tree::from_str(s)?;
-        Wsh::<Pk>::from_tree(top.root())
+        Wsh::<Pk>::from_tree(top.root(), &Segwitv0::SANE)
     }
 }
 
@@ -419,9 +426,16 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Wpkh<Pk> {
 
 impl<Pk: FromStrKey> Wpkh<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(top: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError> {
+    pub fn from_tree(
+        top: expression::TreeIterItem,
+        params: &ValidationParams,
+    ) -> Result<Self, ParseMiniscriptError> {
         let pk = top.verify_terminal_parent("wpkh", "public key")?;
-        Ok(Wpkh::new(pk)?)
+        Segwitv0::CONSENSUS
+            .intersect(params)
+            .validate_pk(&pk)
+            .map_err(ValidationError::Key)?;
+        Ok(Wpkh { pk })
     }
 }
 
@@ -429,7 +443,7 @@ impl<Pk: FromStrKey> core::str::FromStr for Wpkh<Pk> {
     type Err = ParseMiniscriptError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let top = expression::Tree::from_str(s)?;
-        Self::from_tree(top.root())
+        Self::from_tree(top.root(), &Segwitv0::SANE)
     }
 }
 

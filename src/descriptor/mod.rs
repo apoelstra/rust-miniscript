@@ -27,7 +27,7 @@ use crate::prelude::*;
 use crate::{
     expression, hash256, BareCtx, Error, ForEachKey, FromStrKey, MiniscriptKey, ParseError,
     ParseMiniscriptError, Satisfier, Threshold, ToPublicKey, TranslateErr, Translator,
-    ValidationError,
+    ValidationError, ValidationParams,
 };
 
 mod bare;
@@ -983,15 +983,17 @@ impl<Pk: FromStrKey> Descriptor<Pk> {
     /// Parse from an expression tree.
     pub fn from_tree(
         top: expression::TreeIterItem,
+        params: &ValidationParams,
     ) -> Result<Descriptor<Pk>, ParseMiniscriptError> {
-        Ok(match (top.name(), top.n_children()) {
-            ("pkh", 1) => Descriptor::Pkh(Pkh::from_tree(top)?),
-            ("wpkh", 1) => Descriptor::Wpkh(Wpkh::from_tree(top)?),
-            ("sh", 1) => Descriptor::Sh(Sh::from_tree(top)?),
-            ("wsh", 1) => Descriptor::Wsh(Wsh::from_tree(top)?),
-            ("tr", _) => Descriptor::Tr(Tr::from_tree(top)?),
-            _ => Descriptor::Bare(Bare::from_tree(top)?),
-        })
+        let ret = match (top.name(), top.n_children()) {
+            ("pkh", 1) => Descriptor::Pkh(Pkh::from_tree(top, params)?),
+            ("wpkh", 1) => Descriptor::Wpkh(Wpkh::from_tree(top, params)?),
+            ("sh", 1) => Descriptor::Sh(Sh::from_tree(top, params)?),
+            ("wsh", 1) => Descriptor::Wsh(Wsh::from_tree(top, params)?),
+            ("tr", _) => Descriptor::Tr(Tr::from_tree(top, params)?),
+            _ => Descriptor::Bare(Bare::from_tree(top, params)?),
+        };
+        Ok(ret)
     }
 }
 
@@ -999,7 +1001,7 @@ impl<Pk: FromStrKey> FromStr for Descriptor<Pk> {
     type Err = ParseMiniscriptError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let top = expression::Tree::from_str(s)?;
-        let ret = Self::from_tree(top.root())?;
+        let ret = Self::from_tree(top.root(), &ValidationParams::SANE)?;
         if let Descriptor::Tr(ref inner) = ret {
             for item in inner.leaves() {
                 item.miniscript().validate(&Tap::SANE)?;

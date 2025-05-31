@@ -21,24 +21,27 @@ use crate::sync::Arc;
 use crate::{
     expression, policy, script_num_size, Error, ForEachKey, Miniscript, MiniscriptKey,
     ParseMiniscriptError, Satisfier, Threshold, ToPublicKey, TranslateErr, Translator,
-    ValidationError,
+    ValidationError, ValidationParams,
 };
 
 /// Contents of a "sortedmulti" descriptor
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct SortedMultiVec<Pk: MiniscriptKey, Ctx: ScriptContext> {
     inner: Threshold<Pk, MAX_PUBKEYS_PER_MULTISIG>,
+    /// The validation parameters used when constructing the object.
+    validated: ValidationParams,
     /// The current ScriptContext for sortedmulti
     phantom: PhantomData<Ctx>,
 }
 
 impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
-    fn constructor_check(mut self) -> Result<Self, ValidationError> {
+    fn constructor_check(mut self, params: ValidationParams) -> Result<Self, ValidationError> {
         let ms = Miniscript::<Pk, Ctx>::multi(self.inner);
         // Check the limits before creating a new SortedMultiVec
         // For example, under p2sh context the scriptlen can only be
         // upto 520 bytes.
-        ms.validate(&Ctx::SANE)?;
+        ms.validate(&params)?;
+        self.validated = params;
         if let Terminal::Multi(inner) = ms.node {
             self.inner = inner;
             Ok(self)
@@ -51,12 +54,15 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
     ///
     /// Internally checks all the applicable size limits and pubkey types limitations according to the current `Ctx`.
     pub fn new(thresh: Threshold<Pk, MAX_PUBKEYS_PER_MULTISIG>) -> Result<Self, ValidationError> {
-        let ret = Self { inner: thresh, phantom: PhantomData };
-        ret.constructor_check()
+        let ret = Self { inner: thresh, validated: ValidationParams::MAX, phantom: PhantomData };
+        ret.constructor_check(Ctx::SANE)
     }
 
     /// Parse an expression tree into a SortedMultiVec
-    pub fn from_tree(tree: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError>
+    pub fn from_tree(
+        tree: expression::TreeIterItem,
+        params: &ValidationParams,
+    ) -> Result<Self, ParseMiniscriptError>
     where
         Pk: FromStrKey,
     {
@@ -64,9 +70,10 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
 
         let ret = Self {
             inner: tree.verify_threshold(|sub| sub.verify_terminal("public_key"))?,
+            validated: ValidationParams::MAX,
             phantom: PhantomData,
         };
-        Ok(ret.constructor_check()?)
+        Ok(ret.constructor_check(Ctx::CONSENSUS.intersect(params))?)
     }
 
     /// This will panic if fpk returns an uncompressed key when
@@ -81,9 +88,11 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
     {
         let ret = SortedMultiVec {
             inner: self.inner.translate_ref(|pk| t.pk(pk))?,
+            validated: self.validated,
             phantom: PhantomData,
         };
-        ret.constructor_check().map_err(TranslateErr::OuterError)
+        ret.constructor_check(self.validated)
+            .map_err(TranslateErr::OuterError)
     }
 
     /// The threshold value for the multisig.

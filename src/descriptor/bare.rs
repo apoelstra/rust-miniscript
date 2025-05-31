@@ -22,6 +22,7 @@ use crate::util::{varint_len, witness_to_scriptsig};
 use crate::{
     expression, BareCtx, Error, ForEachKey, FromStrKey, Miniscript, MiniscriptKey,
     ParseMiniscriptError, Satisfier, ToPublicKey, TranslateErr, Translator, ValidationError,
+    ValidationParams,
 };
 
 /// Create a Bare Descriptor. That is descriptor that is
@@ -150,8 +151,12 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Bare<Pk> {
 
 impl<Pk: FromStrKey> Bare<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError> {
+    pub fn from_tree(
+        root: expression::TreeIterItem,
+        params: &ValidationParams,
+    ) -> Result<Self, ParseMiniscriptError> {
         let sub = Miniscript::<Pk, BareCtx>::from_tree(root)?;
+        sub.validate(&BareCtx::CONSENSUS.intersect(params))?;
         Ok(Bare::new(sub)?)
     }
 }
@@ -160,7 +165,7 @@ impl<Pk: FromStrKey> core::str::FromStr for Bare<Pk> {
     type Err = ParseMiniscriptError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let top = expression::Tree::from_str(s)?;
-        Self::from_tree(top.root())
+        Self::from_tree(top.root(), &BareCtx::SANE)
     }
 }
 
@@ -331,9 +336,16 @@ impl<Pk: MiniscriptKey> Liftable<Pk> for Pkh<Pk> {
 
 impl<Pk: FromStrKey> Pkh<Pk> {
     /// Parse from an expression tree.
-    pub fn from_tree(root: expression::TreeIterItem) -> Result<Self, ParseMiniscriptError> {
+    pub fn from_tree(
+        root: expression::TreeIterItem,
+        params: &ValidationParams,
+    ) -> Result<Self, ParseMiniscriptError> {
         let pk = root.verify_terminal_parent("pkh", "public key")?;
-        Ok(Pkh::new(pk)?)
+        BareCtx::CONSENSUS
+            .intersect(params)
+            .validate_pk(&pk)
+            .map_err(ValidationError::Key)?;
+        Ok(Pkh { pk })
     }
 }
 
@@ -341,7 +353,7 @@ impl<Pk: FromStrKey> core::str::FromStr for Pkh<Pk> {
     type Err = ParseMiniscriptError;
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         let top = expression::Tree::from_str(s)?;
-        Self::from_tree(top.root())
+        Self::from_tree(top.root(), &BareCtx::SANE)
     }
 }
 
