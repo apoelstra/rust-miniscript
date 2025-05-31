@@ -161,7 +161,7 @@ impl<'tr, Pk: MiniscriptKey> Iterator for TapTreeIter<'tr, Pk> {
     }
 }
 
-impl<'tr, Pk: MiniscriptKey> DoubleEndedIterator for TapTreeIter<'tr, Pk> {
+impl<Pk: MiniscriptKey> DoubleEndedIterator for TapTreeIter<'_, Pk> {
     fn next_back(&mut self) -> Option<Self::Item> {
         self.inner
             .next_back()
@@ -169,11 +169,11 @@ impl<'tr, Pk: MiniscriptKey> DoubleEndedIterator for TapTreeIter<'tr, Pk> {
     }
 }
 
-impl<'tr, Pk: MiniscriptKey> ExactSizeIterator for TapTreeIter<'tr, Pk> {
+impl<Pk: MiniscriptKey> ExactSizeIterator for TapTreeIter<'_, Pk> {
     fn len(&self) -> usize { self.inner.len() }
 }
 
-impl<'tr, Pk: MiniscriptKey> core::iter::FusedIterator for TapTreeIter<'tr, Pk> {}
+impl<Pk: MiniscriptKey> core::iter::FusedIterator for TapTreeIter<'_, Pk> {}
 
 /// Iterator over all of the leaves of a Taproot tree.
 ///
