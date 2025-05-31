@@ -579,13 +579,9 @@ mod private {
                 }
             }
 
-            // FIXME we have to gate this check on params.max_script_size being finite
-            // because otherwise we'll attempt to call self.script_size() when validating
-            // NoChecks scripts, which we cannot do because we have forgotten what size
-            // keys are once we're in the NoChecks context.
-            if params.max_script_size < usize::MAX && self.script_size() > params.max_script_size {
+            if self.maximum_script_size(params) > params.max_script_size {
                 return Err(ValidationError::MaxScriptSizeExceeded {
-                    actual: self.script_size(),
+                    actual: self.maximum_script_size(params),
                     limit: params.max_script_size,
                 });
             }
@@ -650,14 +646,14 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
         self.node.encode(script::Builder::new()).into_script()
     }
 
-    /// Size, in bytes of the script-pubkey. If this Miniscript is used outside
-    /// of segwit (e.g. in a bare or P2SH descriptor), this quantity should be
-    /// multiplied by 4 to compute the weight.
+    /// Upper bound for the size, in bytes, of the Script encoding of this Miniscript.
     ///
-    /// In general, it is not recommended to use this function directly, but
-    /// to instead call the corresponding function on a `Descriptor`, which
-    /// will handle the segwit/non-segwit technicalities for you.
-    pub fn script_size(&self) -> usize {
+    /// In Taproot contexts `allow_ecdsa` should be set to false, which allows smaller
+    /// bounds on the size of signatures and public keys.
+    ///
+    /// Most users do not need to worry about this method. If you are trying to estimate
+    /// the cost of a descriptor, use [`Descriptor::max_weight_to_satisfy`] instead.
+    pub fn maximum_script_size(&self, params: &ValidationParams) -> usize {
         use Terminal::*;
 
         let mut len = 0;
@@ -672,7 +668,7 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
                 Ripemd160(..) | Hash160(..) => 21 + 6,
                 Sha256(..) | Hash256(..) => 33 + 6,
 
-                Terminal::PkK(ref pk) => Ctx::pk_len(pk),
+                Terminal::PkK(ref pk) => params.encoded_key_size(pk),
                 Terminal::After(n) => script_num_size(n.to_consensus_u32() as usize) + 1,
                 Terminal::Older(n) => script_num_size(n.to_consensus_u32() as usize) + 1,
                 Terminal::Verify(ref sub) => usize::from(!sub.ext.has_free_verify),
@@ -686,12 +682,15 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
                     script_num_size(thresh.k())
                         + 1
                         + script_num_size(thresh.n())
-                        + thresh.iter().map(|pk| Ctx::pk_len(pk)).sum::<usize>()
+                        + thresh
+                            .iter()
+                            .map(|pk| params.encoded_key_size(pk))
+                            .sum::<usize>()
                 }
                 Terminal::MultiA(ref thresh) => {
                     script_num_size(thresh.k())
                         + 1 // NUMEQUAL
-                        + thresh.iter().map(|pk| Ctx::pk_len(pk)).sum::<usize>() // n keys
+                        + thresh.iter().map(|pk| params.encoded_key_size(pk)).sum::<usize>() // n keys
                         + thresh.n() // n times CHECKSIGADD
                 }
             }
@@ -1463,7 +1462,7 @@ mod tests {
     fn script_rtt<Str1: Into<Option<&'static str>>>(script: Segwitv0Script, expected_hex: Str1) {
         assert_eq!(script.ty.corr.base, types::Base::B);
         let bitcoin_script = script.encode();
-        assert_eq!(bitcoin_script.len(), script.script_size());
+        assert_eq!(bitcoin_script.len(), script.maximum_script_size(&Segwitv0::SANE));
         if let Some(expected) = expected_hex.into() {
             assert_eq!(format!("{:x}", bitcoin_script), expected);
         }
@@ -1476,7 +1475,7 @@ mod tests {
     fn roundtrip(tree: &Segwitv0Script, s: &str) {
         assert_eq!(tree.ty.corr.base, types::Base::B);
         let ser = tree.encode();
-        assert_eq!(ser.len(), tree.script_size());
+        assert_eq!(ser.len(), tree.maximum_script_size(&Segwitv0::SANE));
         assert_eq!(ser.to_string(), s);
         let deser =
             Segwitv0Script::decode_consensus(&ser).expect("deserialize result of serialize");
@@ -1711,7 +1710,7 @@ mod tests {
              7e5a2a6a7610ca4ea78bd65a087bd75b1870e319 \
              OP_EQUALVERIFY OP_CHECKSIG\
              ";
-        assert_eq!(ser.len(), tree.script_size());
+        assert_eq!(ser.len(), tree.maximum_script_size(&Segwitv0::SANE));
         assert_eq!(ser.to_string(), s);
 
         roundtrip(
@@ -1942,8 +1941,8 @@ mod tests {
             Miniscript::<XOnlyPublicKey, Tap>::decode_consensus(&tap_ms.encode()).unwrap(),
             tap_ms
         );
-        assert_eq!(tap_ms.script_size(), 104);
-        assert_eq!(tap_ms.encode().len(), tap_ms.script_size());
+        assert_eq!(tap_ms.maximum_script_size(&Tap::SANE), 104);
+        assert_eq!(tap_ms.encode().len(), tap_ms.maximum_script_size(&Tap::SANE));
 
         // Test satisfaction code
         struct SimpleSatisfier(secp256k1::schnorr::Signature);

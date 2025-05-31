@@ -43,6 +43,10 @@ pub struct ValidationParams {
     /// Allow unsatisfiable programs.
     pub allow_unsatisfiable: bool,
     /// Allow 32-byte x-only keys.
+    ///
+    /// This value is also used as a proxy for "are we in a Taproot context"; if it
+    /// is set to true, when computing size limits, it will be assumed that public
+    /// keys are 32 bytes and that signatures are 65-byte Taproot signatures.
     pub allow_x_only_keys: bool,
     /// Allow multipath keys with inconsistent lengths.
     pub allow_inconsistent_multipath_keys: bool,
@@ -311,6 +315,40 @@ impl ValidationParams {
             return Err(KeyError::IllegalXOnlyKey(key.to_string()));
         }
         Ok(())
+    }
+
+    /// Determines the size, in bytes and including the push opcode, of a key.
+    ///
+    /// Accepts either a reference to a key, which will be queried in case these
+    /// parameters allow uncompressed keys, or an Option. The compiler may complain
+    /// about passing `None` with no type ascriptions; the type doesn't matter so
+    /// in this case just write `Option::<&String>::None`, curse under your breath,
+    /// and move on.
+    ///
+    /// If a key is provided, this function returns an exact value. If no key is
+    /// provided then it assumes an uncompressed key and only returns an upper bound.
+    pub fn encoded_key_size<'pk, Pk, Opt>(&self, key: Opt) -> usize
+    where
+        Pk: crate::MiniscriptKey + 'pk,
+        Opt: Into<Option<&'pk Pk>>,
+    {
+        if self.allow_uncompressed_keys {
+            // If we are pre-Segwit keys may be compressed or uncompressed, and we
+            // need to query the key itself to determine its size.
+            key.into().map(Pk::full_encoded_length).unwrap_or(66)
+        } else if self.allow_compressed_keys {
+            // In pre-Taproot Segwit all keys must be compressed. (If the given
+            // key is uncompressed, this should trigger an error somewhere else.
+            // So we assume it is compressed here, rather than giving wrong/confusing
+            // estimates.)
+            34
+        } else {
+            // If neither compressed nor uncompressed keys are allowed, assume we are
+            // in a Taproot context, in which case all keys are encoded as x-only keys.
+            // FIXME should we debug_assert self.allow_x_only_keys? Should we otherwise
+            //   return usize::MAX and risk overflows? Should we return 0?
+            33
+        }
     }
 }
 

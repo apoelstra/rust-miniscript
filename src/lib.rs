@@ -148,6 +148,16 @@ pub trait MiniscriptKey: Clone + Eq + Ord + fmt::Debug + fmt::Display + hash::Ha
     /// Returns true if the pubkey is uncompressed. Defaults to `false`.
     fn is_uncompressed(&self) -> bool { false }
 
+    /// The encoded length of the public key, in a context where a full (not x-only)
+    /// public key is expected, including length prefix.
+    fn full_encoded_length(&self) -> usize {
+        if self.is_uncompressed() {
+            66
+        } else {
+            34
+        }
+    }
+
     /// Returns true if the pubkey is an x-only pubkey. Defaults to `false`.
     // This is required to know what in DescriptorPublicKey to know whether the inner
     // key in allowed in descriptor context

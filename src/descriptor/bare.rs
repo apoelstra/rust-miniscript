@@ -212,7 +212,7 @@ impl<Pk: MiniscriptKey> Pkh<Pk> {
     /// When the descriptor is impossible to safisfy (ex: sh(OP_FALSE)).
     pub fn max_weight_to_satisfy(&self) -> Weight {
         // OP_72 + <sig(71)+sigHash(1)> + OP_33 + <pubkey>
-        let scriptsig_size = 73 + BareCtx::pk_len(&self.pk);
+        let scriptsig_size = 73 + self.pk.full_encoded_length();
         // scriptSig varint different between non-satisfied (0) and satisfied
         let scriptsig_varint_diff = varint_len(scriptsig_size) - varint_len(0);
         Weight::from_vb((scriptsig_varint_diff + scriptsig_size) as u64).unwrap()
@@ -296,7 +296,7 @@ impl Pkh<DefiniteDescriptorKey> {
         let stack = if provider.provider_lookup_ecdsa_sig(&self.pk) {
             let stack = vec![
                 Placeholder::EcdsaSigPk(self.pk.clone()),
-                Placeholder::Pubkey(self.pk.clone(), BareCtx::pk_len(&self.pk)),
+                Placeholder::Pubkey(self.pk.clone(), self.pk.full_encoded_length()),
             ];
             Witness::Stack(stack)
         } else {

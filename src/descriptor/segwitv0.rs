@@ -68,12 +68,12 @@ impl<Pk: MiniscriptKey> Wsh<Pk> {
     pub fn max_weight_to_satisfy(&self) -> Result<Weight, crate::SatisfactionImpossibleError> {
         let (redeem_script_size, max_sat_elems, max_sat_size) = match self.inner {
             WshInner::SortedMulti(ref smv) => (
-                smv.script_size(),
+                smv.maximum_script_size(&Segwitv0::SANE),
                 smv.max_satisfaction_witness_elements(),
                 smv.max_satisfaction_size(),
             ),
             WshInner::Ms(ref ms) => (
-                ms.script_size(),
+                ms.maximum_script_size(&Segwitv0::SANE),
                 ms.max_satisfaction_witness_elements()?,
                 ms.max_satisfaction_size()?,
             ),
@@ -293,7 +293,7 @@ impl<Pk: MiniscriptKey> Wpkh<Pk> {
     /// sighash suffix.
     pub fn max_weight_to_satisfy(&self) -> Weight {
         // stack items: <varint(sig+sigHash)> <sig(71)+sigHash(1)> <varint(pubkey)> <pubkey>
-        let stack_items_size = 73 + Segwitv0::pk_len(&self.pk);
+        let stack_items_size = 73 + self.pk.full_encoded_length();
         // stackLen varint difference between non-satisfied (0) and satisfied
         let stack_varint_diff = varint_len(2) - varint_len(0);
         Weight::from_wu((stack_varint_diff + stack_items_size) as u64)
@@ -390,7 +390,7 @@ impl Wpkh<DefiniteDescriptorKey> {
         let stack = if provider.provider_lookup_ecdsa_sig(&self.pk) {
             let stack = vec![
                 Placeholder::EcdsaSigPk(self.pk.clone()),
-                Placeholder::Pubkey(self.pk.clone(), Segwitv0::pk_len(&self.pk)),
+                Placeholder::Pubkey(self.pk.clone(), self.pk.full_encoded_length()),
             ];
             Witness::Stack(stack)
         } else {

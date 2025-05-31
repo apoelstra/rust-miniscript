@@ -186,11 +186,15 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> SortedMultiVec<Pk, Ctx> {
     /// In general, it is not recommended to use this function directly, but
     /// to instead call the corresponding function on a `Descriptor`, which
     /// will handle the segwit/non-segwit technicalities for you.
-    pub fn script_size(&self) -> usize {
+    pub fn maximum_script_size(&self, params: &ValidationParams) -> usize {
         script_num_size(self.k())
             + 1
             + script_num_size(self.n())
-            + self.pks().iter().map(|pk| Ctx::pk_len(pk)).sum::<usize>()
+            + self
+                .pks()
+                .iter()
+                .map(|key| params.encoded_key_size(key))
+                .sum::<usize>()
     }
 
     /// Maximum number of witness elements used to satisfy the Miniscript

@@ -165,7 +165,7 @@ impl<Pk: MiniscriptKey> Tr<Pk> {
         let wu = tree
             .leaves()
             .filter_map(|leaf| {
-                let script_size = leaf.miniscript().script_size();
+                let script_size = leaf.miniscript().maximum_script_size(&Tap::SANE);
                 let max_sat_elems = leaf.miniscript().max_satisfaction_witness_elements().ok()?;
                 let max_sat_size = leaf.miniscript().max_satisfaction_size().ok()?;
                 let control_block_size = control_block_len(leaf.depth());

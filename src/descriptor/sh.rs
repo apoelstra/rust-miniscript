@@ -183,7 +183,7 @@ impl<Pk: MiniscriptKey> Sh<Pk> {
                 (scriptsig_size, witness_size)
             }
             ShInner::SortedMulti(ref smv) => {
-                let ss = smv.script_size();
+                let ss = smv.maximum_script_size(&Legacy::SANE);
                 let ps = push_opcode_size(ss);
                 let scriptsig_size = ps + ss + smv.max_satisfaction_size();
                 (scriptsig_size, Weight::ZERO)
@@ -196,7 +196,7 @@ impl<Pk: MiniscriptKey> Sh<Pk> {
                 (scriptsig_size, witness_size)
             }
             ShInner::Ms(ref ms) => {
-                let ss = ms.script_size();
+                let ss = ms.maximum_script_size(&Legacy::SANE);
                 let ps = push_opcode_size(ss);
                 let scriptsig_size = ps + ss + ms.max_satisfaction_size()?;
                 (scriptsig_size, Weight::ZERO)
