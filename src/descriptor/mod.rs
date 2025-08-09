@@ -26,8 +26,8 @@ use crate::plan::{AssetProvider, Plan};
 use crate::prelude::*;
 use crate::{
     expression, hash256, BareCtx, Error, ForEachKey, FromStrKey, MiniscriptKey, ParseError,
-    ParseMiniscriptError, Satisfier, Threshold, ToPublicKey, TranslateErr, Translator,
-    ValidationError, ValidationParams,
+    ParseMiniscriptError, Satisfier, ScriptContext as _, Threshold, ToPublicKey, TranslateErr,
+    Translator, ValidationError, ValidationParams,
 };
 
 mod bare;
@@ -156,7 +156,10 @@ impl<Pk: MiniscriptKey> Descriptor<Pk> {
 
     /// Create a new pk descriptor
     pub fn new_pk(pk: Pk) -> Self {
-        Self::Bare(Bare::new(Miniscript::pk(pk)).expect("Context checks cannot fail for p2pk"))
+        Self::Bare(
+            Bare::new(Miniscript::pk(&Legacy::SANE, pk))
+                .expect("Context checks cannot fail for p2pk"),
+        )
     }
 
     /// Create a new PkH descriptor

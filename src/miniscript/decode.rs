@@ -363,7 +363,7 @@ pub fn decode<Pk: ParseableKey, Ctx: ScriptContext>(
                         }
                         let pk = Pk::from_33_bytes(pk)
                             .map_err(Error::PublicKey)?;
-                        term.push(Miniscript::pk_k(pk));
+                        term.push(Miniscript::pk_k(params, pk));
                     },
                     Tk::Bytes65(pk) => {
                         if !params.allow_uncompressed_keys {
@@ -371,7 +371,7 @@ pub fn decode<Pk: ParseableKey, Ctx: ScriptContext>(
                         }
                         let pk = Pk::from_65_bytes(pk)
                             .map_err(Error::PublicKey)?;
-                        term.push(Miniscript::pk_k(pk));
+                        term.push(Miniscript::pk_k(params, pk));
                     },
                     // Note this does not collide with hash32 because they always followed by equal
                     // and would be parsed in different branch. If we get a naked Bytes32, it must be
@@ -391,7 +391,7 @@ pub fn decode<Pk: ParseableKey, Ctx: ScriptContext>(
                         }
                         let pk = Pk::from_32_bytes(pk)
                             .map_err(Error::PublicKey)?;
-                        term.push(Miniscript::pk_k(pk));
+                        term.push(Miniscript::pk_k(params, pk));
                     },
                     // checksig
                     Tk::CheckSig => {

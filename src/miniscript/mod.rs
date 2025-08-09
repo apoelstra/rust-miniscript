@@ -170,8 +170,8 @@ mod private {
         };
 
         /// The `pk` combinator, which is an alias for `c:pk_k`.
-        pub fn pk(pk: Pk) -> Self {
-            let inner = Arc::new(Self::pk_k(pk));
+        pub fn pk(params: &ValidationParams, pk: Pk) -> Self {
+            let inner = Arc::new(Self::pk_k(params, pk));
             Self {
                 ty: types::Type::cast_check(inner.ty).unwrap(),
                 ext: types::extra_props::ExtData::cast_check(inner.ext),
@@ -194,9 +194,9 @@ mod private {
         }
 
         /// The `pk_k` combinator.
-        pub fn pk_k(pk: Pk) -> Self {
+        pub fn pk_k(params: &ValidationParams, pk: Pk) -> Self {
             Self {
-                ext: types::extra_props::ExtData::pk_k::<_, Ctx>(&pk),
+                ext: types::extra_props::ExtData::pk_k(params, &pk),
                 node: Terminal::PkK(pk),
                 ty: types::Type::pk_k(),
                 validated: ValidationParams::MAX,
@@ -327,7 +327,7 @@ mod private {
                 ty: Type::type_check(&t)
                     .map_err(ConstructError::TypeCheck)
                     .map_err(|e| WithSpan::new(e).with_string(t.to_string()))?,
-                ext: ExtData::type_check(&t),
+                ext: ExtData::type_check(params, &t),
                 node: t,
                 validated: ValidationParams::MAX,
                 phantom: PhantomData,
@@ -1221,13 +1221,13 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
                     .map(Self::expr_raw_pkh)?,
                 "pk" => node
                     .verify_terminal_parent("pk", "public key")
-                    .map(Self::pk)?,
+                    .map(|pk| Self::pk(params, pk))?,
                 "pkh" => node
                     .verify_terminal_parent("pkh", "public key")
                     .map(Self::pkh)?,
                 "pk_k" => node
                     .verify_terminal_parent("pk_k", "public key")
-                    .map(Self::pk_k)?,
+                    .map(|pk| Self::pk_k(params, pk))?,
                 "pk_h" => node
                     .verify_terminal_parent("pk_h", "public key")
                     .map(Self::pk_h)?,

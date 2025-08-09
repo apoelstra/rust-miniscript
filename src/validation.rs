@@ -317,6 +317,21 @@ impl ValidationParams {
         Ok(())
     }
 
+    /// Determines the maximum size, in bytes and including both the sighash flag and
+    /// the push opcode, of a siganture.
+    ///
+    /// Because signatures are witness data, we don't have them available at estimation
+    /// time, so we just have to choose a maximum value. Post-Taproot, conveniently, all
+    /// signatures are a fixed size.
+    pub fn maximum_encoded_sig_size(&self) -> usize {
+        if self.allow_uncompressed_keys || self.allow_compressed_keys {
+            73
+        } else {
+            // Assume Taproot; see FIXME in `encoded_key_size` below.
+            66
+        }
+    }
+
     /// Determines the size, in bytes and including the push opcode, of a key.
     ///
     /// Accepts either a reference to a key, which will be queried in case these

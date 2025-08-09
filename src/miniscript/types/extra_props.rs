@@ -9,7 +9,7 @@ use core::iter::once;
 use super::ScriptContext;
 use crate::miniscript::limits::{MAX_PUBKEYS_IN_CHECKSIGADD, MAX_PUBKEYS_PER_MULTISIG};
 use crate::prelude::*;
-use crate::{script_num_size, AbsLockTime, MiniscriptKey, RelLockTime, Terminal};
+use crate::{script_num_size, AbsLockTime, MiniscriptKey, RelLockTime, Terminal, ValidationParams};
 
 /// Timelock information for satisfaction of a fragment.
 #[derive(Copy, Clone, PartialEq, Eq, PartialOrd, Ord, Debug, Default, Hash)]
@@ -246,21 +246,15 @@ impl ExtData {
     /// Extra properties for the `pk_k` fragment.
     ///
     /// The key must be provided to determine its size.
-    pub fn pk_k<Pk: MiniscriptKey, Ctx: ScriptContext>(pk: &Pk) -> Self {
-        let (key_bytes, max_sig_bytes) = match Ctx::sig_type() {
-            crate::SigType::Ecdsa if pk.is_uncompressed() => (65, 73),
-            crate::SigType::Ecdsa => (34, 73),
-            crate::SigType::Schnorr => (33, 66),
-        };
-
+    pub fn pk_k<Pk: MiniscriptKey>(params: &ValidationParams, pk: &Pk) -> Self {
         ExtData {
-            pk_cost: key_bytes,
+            pk_cost: params.encoded_key_size(pk),
             has_free_verify: false,
             static_ops: 0,
             sat_data: Some(SatData {
-                max_witness_stack_size: max_sig_bytes,
+                max_witness_stack_size: params.maximum_encoded_sig_size(),
                 max_witness_stack_count: 1,
-                max_script_sig_size: max_sig_bytes,
+                max_script_sig_size: params.maximum_encoded_sig_size(),
                 max_exec_stack_count: 1, // pushes the pk
                 max_exec_op_count: 0,
             }),
@@ -1020,7 +1014,7 @@ impl ExtData {
 
     /// Compute the type of a fragment assuming all the children of
     /// Miniscript have been computed already.
-    pub fn type_check<Pk, Ctx>(fragment: &Terminal<Pk, Ctx>) -> Self
+    pub fn type_check<Pk, Ctx>(params: &ValidationParams, fragment: &Terminal<Pk, Ctx>) -> Self
     where
         Ctx: ScriptContext,
         Pk: MiniscriptKey,
@@ -1028,7 +1022,7 @@ impl ExtData {
         let ret = match *fragment {
             Terminal::True => Self::TRUE,
             Terminal::False => Self::FALSE,
-            Terminal::PkK(ref k) => Self::pk_k::<_, Ctx>(k),
+            Terminal::PkK(ref k) => Self::pk_k(params, k),
             Terminal::PkH(ref k) => Self::pk_h::<_, Ctx>(Some(k)),
             Terminal::RawPkH(..) => Self::pk_h::<Pk, Ctx>(None),
             Terminal::Multi(ref thresh) => Self::multi(thresh),
