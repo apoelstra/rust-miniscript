@@ -34,28 +34,23 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
     fn push_0() -> Self { Self { stack: Witness::push_0(), ..Self::TRIVIAL } }
 
     /// The (dissatisfaction, satisfaction) pair for a `pk_k` fragment.
-    fn pk_k<S, Ctx>(stfr: &S, pk: &Pk, leaf_hash: &TapLeafHash) -> (Self, Self)
+    fn pk_k<S>(stfr: &S, pk: &Pk, leaf_hash: Option<TapLeafHash>) -> (Self, Self)
     where
         S: AssetProvider<Pk>,
-        Ctx: ScriptContext,
     {
         (
             Self::push_0(),
-            Self {
-                stack: Witness::signature::<_, Ctx>(stfr, pk, leaf_hash),
-                has_sig: true,
-                ..Self::TRIVIAL
-            },
+            Self { stack: Witness::signature(stfr, pk, leaf_hash), has_sig: true, ..Self::TRIVIAL },
         )
     }
 
     /// The (dissatisfaction, satisfaction) pair for a `pk_h` fragment.
-    fn pk_h<S, Ctx>(stfr: &S, pk: &Pk, leaf_hash: &TapLeafHash) -> (Self, Self)
+    fn pk_h<S, Ctx>(stfr: &S, pk: &Pk, leaf_hash: Option<TapLeafHash>) -> (Self, Self)
     where
         S: AssetProvider<Pk>,
         Ctx: ScriptContext,
     {
-        let wit = Witness::signature::<_, Ctx>(stfr, pk, leaf_hash);
+        let wit = Witness::signature(stfr, pk, leaf_hash);
         (
             Self {
                 stack: Witness::combine(
@@ -79,7 +74,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
     fn raw_pk_h<S, Ctx>(
         stfr: &S,
         pkh: &hash160::Hash,
-        leaf_hash: &TapLeafHash,
+        leaf_hash: Option<TapLeafHash>,
     ) -> (Self, Self)
     where
         S: AssetProvider<Pk>,
@@ -102,14 +97,9 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
     }
 
     /// The (dissatisfaction, satisfaction) pair for a `multi` fragment.
-    fn multi<S, Ctx>(
-        stfr: &S,
-        thresh: &Threshold<Pk, MAX_PUBKEYS_PER_MULTISIG>,
-        leaf_hash: &TapLeafHash,
-    ) -> (Self, Self)
+    fn multi<S>(stfr: &S, thresh: &Threshold<Pk, MAX_PUBKEYS_PER_MULTISIG>) -> (Self, Self)
     where
         S: AssetProvider<Pk>,
-        Ctx: ScriptContext,
     {
         let dissat = Self {
             stack: Witness::Stack(vec![Placeholder::PushZero; thresh.k() + 1]),
@@ -120,7 +110,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
         let mut sig_count = 0;
         let mut sigs = Vec::with_capacity(thresh.k());
         for pk in thresh.data() {
-            match Witness::signature::<_, Ctx>(stfr, pk, leaf_hash) {
+            match Witness::signature(stfr, pk, None) {
                 Witness::Stack(sig) => {
                     sigs.push(sig);
                     sig_count += 1;
@@ -160,14 +150,13 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
     }
 
     /// The (dissatisfaction, satisfaction) pair for a `multi` fragment.
-    fn multi_a<S, Ctx>(
+    fn multi_a<S>(
         stfr: &S,
         thresh: &Threshold<Pk, MAX_PUBKEYS_IN_CHECKSIGADD>,
-        leaf_hash: &TapLeafHash,
+        leaf_hash: TapLeafHash,
     ) -> (Self, Self)
     where
         S: AssetProvider<Pk>,
-        Ctx: ScriptContext,
     {
         let dissat = Self {
             stack: Witness::Stack(vec![Placeholder::PushZero; thresh.n()]),
@@ -178,7 +167,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
         let mut sig_count = 0;
         let mut sigs = vec![vec![Placeholder::PushZero]; thresh.n()];
         for (i, pk) in thresh.iter().rev().enumerate() {
-            match Witness::signature::<_, Ctx>(stfr, pk, leaf_hash) {
+            match Witness::signature(stfr, pk, Some(leaf_hash)) {
                 Witness::Stack(sig) => {
                     sigs[i] = sig;
                     sig_count += 1;
@@ -314,7 +303,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
         stfr: &Sat,
         malleable: bool,
         root_has_sig: bool,
-        leaf_hash: &TapLeafHash,
+        leaf_hash: Option<TapLeafHash>,
     ) -> (Self, Self)
     where
         Ctx: ScriptContext,
@@ -336,11 +325,11 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
             let new_dissat_sat = match *item.node.as_inner() {
                 Terminal::False => (Self::TRIVIAL, Self::IMPOSSIBLE),
                 Terminal::True => (Self::IMPOSSIBLE, Self::TRIVIAL),
-                Terminal::PkK(ref pk) => Self::pk_k::<_, Ctx>(stfr, pk, leaf_hash),
+                Terminal::PkK(ref pk) => Self::pk_k(stfr, pk, leaf_hash),
                 Terminal::PkH(ref pk) => Self::pk_h::<_, Ctx>(stfr, pk, leaf_hash),
                 Terminal::RawPkH(ref pkh) => Self::raw_pk_h::<_, Ctx>(stfr, pkh, leaf_hash),
-                Terminal::Multi(ref thresh) => Self::multi::<_, Ctx>(stfr, thresh, leaf_hash),
-                Terminal::MultiA(ref thresh) => Self::multi_a::<_, Ctx>(stfr, thresh, leaf_hash),
+                Terminal::Multi(ref thresh) => Self::multi(stfr, thresh),
+                Terminal::MultiA(ref thresh) => Self::multi_a(stfr, thresh, leaf_hash.expect("leaf_hash is present when Ctx = Tap, which must be true if multi_a is present")),
                 Terminal::After(t) => Self::after(stfr, t, root_has_sig),
                 Terminal::Older(t) => Self::older(stfr, t, root_has_sig),
                 Terminal::Ripemd160(ref h) => Self::ripemd160(stfr, h),
@@ -356,7 +345,10 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
                     let (_, sub) = stack.pop().unwrap();
                     (
                         Self::push_0(),
-                        Self { stack: Witness::combine(sub.stack, Witness::push_1()), ..sub },
+                        Self {
+                            stack: Witness::combine(sub.stack, Witness::push_1()),
+                            ..sub
+                        }
                     )
                 }
                 Terminal::Verify(_) => {
@@ -370,14 +362,20 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
                 Terminal::AndB(_, _) => {
                     let (r_dis, r_sat) = stack.pop().unwrap();
                     let (l_dis, l_sat) = stack.pop().unwrap();
-                    (l_dis.concatenate_rev(r_dis), l_sat.concatenate_rev(r_sat))
-                }
+                    (
+                        l_dis.concatenate_rev(r_dis),
+                        l_sat.concatenate_rev(r_sat),
+                    )
+                },
                 Terminal::AndV(_, _) => {
                     let (r_dis, r_sat) = stack.pop().unwrap();
                     let (_, l_sat) = stack.pop().unwrap();
                     // Left child is a `v` and must be satisfied for both sat and dissat.
-                    (l_sat.clone().concatenate_rev(r_dis), l_sat.concatenate_rev(r_sat))
-                }
+                    (
+                        l_sat.clone().concatenate_rev(r_dis),
+                        l_sat.concatenate_rev(r_sat),
+                    )
+                },
                 Terminal::AndOr(_, _, _) => {
                     let (c_dis, c_sat) = stack.pop().unwrap();
                     let (_, b_sat) = stack.pop().unwrap();
@@ -407,7 +405,10 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
                     let (l_dis, l_sat) = stack.pop().unwrap();
                     assert!(!l_dis.has_sig);
 
-                    (Self::IMPOSSIBLE, min_fn(l_sat, Self::concatenate_rev(l_dis, r_sat)))
+                    (
+                        Self::IMPOSSIBLE,
+                        min_fn(l_sat, Self::concatenate_rev(l_dis, r_sat))
+                    )
                 }
                 Terminal::OrD(_, _) => {
                     let (r_dis, r_sat) = stack.pop().unwrap();
@@ -416,7 +417,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
 
                     (
                         l_dis.clone().concatenate_rev(r_dis),
-                        min_fn(l_sat, Self::concatenate_rev(l_dis, r_sat)),
+                        min_fn(l_sat, Self::concatenate_rev(l_dis, r_sat))
                     )
                 }
                 Terminal::OrI(_, _) => {
@@ -464,7 +465,8 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
                     // But satisfaction is a bit harder.
                     let sat = if thresh.k() == thresh.n() {
                         // this is just an and
-                        sats.into_iter().fold(Self::empty(), Self::concatenate_rev)
+                        sats.into_iter()
+                            .fold(Self::empty(), Self::concatenate_rev)
                     } else {
                         thresh_fn(thresh.k(), thresh.n(), dissats, sats)
                     };

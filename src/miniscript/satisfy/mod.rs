@@ -736,30 +736,23 @@ impl<Pk: MiniscriptKey> Ord for Witness<Placeholder<Pk>> {
 
 impl<Pk: MiniscriptKey + ToPublicKey> Witness<Placeholder<Pk>> {
     /// Turn a signature into (part of) a satisfaction
-    fn signature<S: AssetProvider<Pk>, Ctx: ScriptContext>(
-        sat: &S,
-        pk: &Pk,
-        leaf_hash: &TapLeafHash,
-    ) -> Self {
-        match Ctx::sig_type() {
-            super::context::SigType::Ecdsa => {
-                if sat.provider_lookup_ecdsa_sig(pk) {
-                    Witness::Stack(vec![Placeholder::EcdsaSigPk(pk.clone())])
-                } else {
-                    // Signatures cannot be forged
-                    Witness::Impossible
-                }
+    fn signature<S: AssetProvider<Pk>>(sat: &S, pk: &Pk, leaf_hash: Option<TapLeafHash>) -> Self {
+        if let Some(leaf_hash) = leaf_hash {
+            match sat.provider_lookup_tap_leaf_script_sig(pk, &leaf_hash) {
+                Some(size) => Witness::Stack(vec![Placeholder::SchnorrSigPk(
+                    pk.clone(),
+                    SchnorrSigType::ScriptSpend { leaf_hash },
+                    size,
+                )]),
+                // Signatures cannot be forged
+                None => Witness::Impossible,
             }
-            super::context::SigType::Schnorr => {
-                match sat.provider_lookup_tap_leaf_script_sig(pk, leaf_hash) {
-                    Some(size) => Witness::Stack(vec![Placeholder::SchnorrSigPk(
-                        pk.clone(),
-                        SchnorrSigType::ScriptSpend { leaf_hash: *leaf_hash },
-                        size,
-                    )]),
-                    // Signatures cannot be forged
-                    None => Witness::Impossible,
-                }
+        } else {
+            if sat.provider_lookup_ecdsa_sig(pk) {
+                Witness::Stack(vec![Placeholder::EcdsaSigPk(pk.clone())])
+            } else {
+                // Signatures cannot be forged
+                Witness::Impossible
             }
         }
     }
@@ -787,24 +780,23 @@ impl<Pk: MiniscriptKey + ToPublicKey> Witness<Placeholder<Pk>> {
     fn pkh_signature<S: AssetProvider<Pk>, Ctx: ScriptContext>(
         sat: &S,
         pkh: &hash160::Hash,
-        leaf_hash: &TapLeafHash,
+        leaf_hash: Option<TapLeafHash>,
     ) -> Self {
-        match Ctx::sig_type() {
-            SigType::Ecdsa => match sat.provider_lookup_raw_pkh_ecdsa_sig(pkh) {
+        if let Some(leaf_hash) = leaf_hash {
+            match sat.provider_lookup_raw_pkh_tap_leaf_script_sig(&(*pkh, leaf_hash)) {
+                Some((pk, size)) => Witness::Stack(vec![
+                    Placeholder::SchnorrSigPkHash(*pkh, leaf_hash, size),
+                    Placeholder::PubkeyHash(*pkh, Ctx::pk_len(&pk)),
+                ]),
+                None => Witness::Impossible,
+            }
+        } else {
+            match sat.provider_lookup_raw_pkh_ecdsa_sig(pkh) {
                 Some(pk) => Witness::Stack(vec![
                     Placeholder::EcdsaSigPkHash(*pkh),
                     Placeholder::PubkeyHash(*pkh, Ctx::pk_len(&pk)),
                 ]),
                 None => Witness::Impossible,
-            },
-            SigType::Schnorr => {
-                match sat.provider_lookup_raw_pkh_tap_leaf_script_sig(&(*pkh, *leaf_hash)) {
-                    Some((pk, size)) => Witness::Stack(vec![
-                        Placeholder::SchnorrSigPkHash(*pkh, *leaf_hash, size),
-                        Placeholder::PubkeyHash(*pkh, Ctx::pk_len(&pk)),
-                    ]),
-                    None => Witness::Impossible,
-                }
             }
         }
     }
@@ -923,7 +915,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
         node: &Miniscript<Pk, Ctx>,
         provider: &P,
         root_has_sig: bool,
-        leaf_hash: &TapLeafHash,
+        leaf_hash: Option<TapLeafHash>,
     ) -> Self
     where
         Ctx: ScriptContext,
@@ -936,7 +928,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
         node: &Miniscript<Pk, Ctx>,
         provider: &P,
         root_has_sig: bool,
-        leaf_hash: &TapLeafHash,
+        leaf_hash: Option<TapLeafHash>,
     ) -> Self
     where
         Ctx: ScriptContext,
@@ -1159,7 +1151,7 @@ impl Satisfaction<Vec<u8>> {
         node: &Miniscript<Pk, Ctx>,
         stfr: &Sat,
         root_has_sig: bool,
-        leaf_hash: &TapLeafHash,
+        leaf_hash: Option<TapLeafHash>,
     ) -> Self
     where
         Ctx: ScriptContext,
@@ -1176,7 +1168,7 @@ impl Satisfaction<Vec<u8>> {
         node: &Miniscript<Pk, Ctx>,
         stfr: &Sat,
         root_has_sig: bool,
-        leaf_hash: &TapLeafHash,
+        leaf_hash: Option<TapLeafHash>,
     ) -> Self
     where
         Ctx: ScriptContext,
