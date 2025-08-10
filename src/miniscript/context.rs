@@ -167,7 +167,7 @@ impl fmt::Display for ScriptContextError {
 /// context under which the script is used.
 /// For example, disallowing uncompressed keys in Segwit context
 pub trait ScriptContext:
-    fmt::Debug + Clone + Ord + PartialOrd + Eq + PartialEq + hash::Hash + private::Sealed
+    fmt::Debug + Clone + Ord + PartialOrd + Eq + PartialEq + hash::Hash + private::Sealed + 'static
 where
     Self::Key: MiniscriptKey<Sha256 = sha256::Hash>,
     Self::Key: MiniscriptKey<Hash256 = hash256::Hash>,

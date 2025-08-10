@@ -429,7 +429,14 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     where
         Pk: ToPublicKey,
     {
-        TapLeafHash::from_script(&self.encode(), LeafVersion::TapScript)
+        use crate::blanket_traits::DowncastMiniscript as _;
+
+        if let Some(tapms) = self.downcast::<Tap>() {
+            tapms.leaf_hash()
+        } else {
+            use bitcoin::hashes::Hash as _;
+            TapLeafHash::from_byte_array([0; 32])
+        }
     }
 
     /// Attempt to produce non-malleable satisfying witness for the
@@ -511,11 +518,13 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
     }
 }
 
-impl Miniscript<<Tap as ScriptContext>::Key, Tap> {
+impl<Pk: ToPublicKey> Miniscript<Pk, Tap> {
     /// Returns the leaf hash used within a Taproot signature for this script.
     ///
     /// Note that this method is only implemented for Taproot Miniscripts.
-    pub fn leaf_hash(&self) -> TapLeafHash { self.leaf_hash_internal() }
+    pub fn leaf_hash(&self) -> TapLeafHash {
+        TapLeafHash::from_script(&self.encode(), LeafVersion::TapScript)
+    }
 }
 
 impl<Ctx: ScriptContext> Miniscript<Ctx::Key, Ctx> {

@@ -15,7 +15,7 @@
 use core::str::FromStr;
 use core::{fmt, hash};
 
-use crate::MiniscriptKey;
+use crate::{Miniscript, MiniscriptKey, ScriptContext};
 
 /// Auxiliary trait indicating that a type implements both `Debug`, `Display`, `Send` and `Sync`.
 // NOTE: `Send` / `Sync` is required to maintain compatibility with downstream error handling libraries.
@@ -99,4 +99,27 @@ where
     type _Hash160 = <T as MiniscriptKey>::Hash160;
     type _Hash160FromStrErr = <<T as MiniscriptKey>::Hash160 as FromStr>::Err;
     type _FromStrErr = <T as FromStr>::Err;
+}
+
+/// Internal trait used to convert a generic &Miniscript<Pk, Ctx> to a specific
+/// value of Ctx.
+pub(crate) trait DowncastMiniscript<Pk: MiniscriptKey> {
+    fn downcast<Ctx: ScriptContext>(&self) -> Option<&Miniscript<Pk, Ctx>>;
+}
+
+impl<Pk, GenericCtx> DowncastMiniscript<Pk> for Miniscript<Pk, GenericCtx>
+where
+    Pk: MiniscriptKey,
+    GenericCtx: ScriptContext,
+{
+    #[allow(unsafe_code)]
+    fn downcast<Ctx: ScriptContext>(&self) -> Option<&Miniscript<Pk, Ctx>> {
+        use core::any::TypeId;
+        if TypeId::of::<GenericCtx>() == TypeId::of::<Ctx>() {
+            // SAFETY: this pointer cast is a no-op, as guaranteed by the if guard
+            Some(unsafe { &*core::ptr::from_ref(self).cast() })
+        } else {
+            None
+        }
+    }
 }
