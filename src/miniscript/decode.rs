@@ -409,6 +409,7 @@ pub fn decode<Pk: ParseableKey, Ctx: ScriptContext>(
                                     tokens,
                                     Tk::Dup => {
                                         term.push(Miniscript::expr_raw_pkh(
+                                            params,
                                             hash160::Hash::from_byte_array(hash)
                                         ));
                                     },

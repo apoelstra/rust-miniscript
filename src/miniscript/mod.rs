@@ -182,8 +182,8 @@ mod private {
         }
 
         /// The `pkh` combinator, which is an alias for `c:pk_h`.
-        pub fn pkh(pk: Pk) -> Self {
-            let inner = Arc::new(Self::pk_h(pk));
+        pub fn pkh(params: &ValidationParams, pk: Pk) -> Self {
+            let inner = Arc::new(Self::pk_h(params, pk));
             Self {
                 ty: types::Type::cast_check(inner.ty).unwrap(),
                 ext: types::extra_props::ExtData::cast_check(inner.ext),
@@ -205,9 +205,9 @@ mod private {
         }
 
         /// The `pk_h` combinator.
-        pub fn pk_h(pk: Pk) -> Self {
+        pub fn pk_h(params: &ValidationParams, pk: Pk) -> Self {
             Self {
-                ext: types::extra_props::ExtData::pk_h::<_, Ctx>(Some(&pk)),
+                ext: types::extra_props::ExtData::pk_h(params, Some(&pk)),
                 node: Terminal::PkH(pk),
                 ty: types::Type::pk_h(),
                 validated: ValidationParams::MAX,
@@ -216,11 +216,14 @@ mod private {
         }
 
         /// The `expr_raw_pkh` combinator.
-        pub fn expr_raw_pkh(hash: bitcoin::hashes::hash160::Hash) -> Self {
+        pub fn expr_raw_pkh(
+            params: &ValidationParams,
+            hash: bitcoin::hashes::hash160::Hash,
+        ) -> Self {
             Self {
                 node: Terminal::RawPkH(hash),
                 ty: types::Type::pk_h(),
-                ext: types::extra_props::ExtData::pk_h::<Pk, Ctx>(None),
+                ext: types::extra_props::ExtData::pk_h(params, Option::<&Pk>::None),
                 validated: ValidationParams::MAX,
                 phantom: PhantomData,
             }
@@ -1218,19 +1221,19 @@ impl<Pk: FromStrKey, Ctx: ScriptContext> Miniscript<Pk, Ctx> {
             let new = match frag_name {
                 "expr_raw_pkh" => node
                     .verify_terminal_parent("expr_raw_pkh", "public key hash")
-                    .map(Self::expr_raw_pkh)?,
+                    .map(|hash| Self::expr_raw_pkh(params, hash))?,
                 "pk" => node
                     .verify_terminal_parent("pk", "public key")
                     .map(|pk| Self::pk(params, pk))?,
                 "pkh" => node
                     .verify_terminal_parent("pkh", "public key")
-                    .map(Self::pkh)?,
+                    .map(|pk| Self::pkh(params, pk))?,
                 "pk_k" => node
                     .verify_terminal_parent("pk_k", "public key")
                     .map(|pk| Self::pk_k(params, pk))?,
                 "pk_h" => node
                     .verify_terminal_parent("pk_h", "public key")
-                    .map(Self::pk_h)?,
+                    .map(|pk| Self::pk_h(params, pk))?,
                 "after" => node.verify_after().map(Self::after)?,
                 "older" => node.verify_older().map(Self::older)?,
                 "sha256" => node

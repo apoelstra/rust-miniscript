@@ -275,23 +275,18 @@ impl ExtData {
     ///
     /// If the key is known, it should be provided to gain a size estimate from
     /// it. If not, the worst-case for the context will be assumed.
-    pub fn pk_h<Pk: MiniscriptKey, Ctx: ScriptContext>(pk: Option<&Pk>) -> Self {
+    pub fn pk_h<Pk: MiniscriptKey>(params: &ValidationParams, pk: Option<&Pk>) -> Self {
         // With a raw pkh we don't know the preimage size so we have to assume the worst.
-        // FIXME with ValidationParams we will be able to determine if Ctx is Segwitv0 and exclude uncompressed keys.
-        let (key_bytes, max_sig_bytes) = match (Ctx::sig_type(), pk) {
-            (crate::SigType::Ecdsa, Some(pk)) if pk.is_uncompressed() => (65, 73),
-            (crate::SigType::Ecdsa, _) => (34, 73),
-            (crate::SigType::Schnorr, _) => (33, 66),
-        };
+        let key_bytes = params.encoded_key_size(pk);
 
         ExtData {
             pk_cost: 24,
             has_free_verify: false,
             static_ops: 3,
             sat_data: Some(SatData {
-                max_witness_stack_size: key_bytes + max_sig_bytes,
+                max_witness_stack_size: key_bytes + params.maximum_encoded_sig_size(),
                 max_witness_stack_count: 2,
-                max_script_sig_size: key_bytes + max_sig_bytes,
+                max_script_sig_size: key_bytes + params.maximum_encoded_sig_size(),
                 max_exec_stack_count: 2, // dup and hash push
                 max_exec_op_count: 0,
             }),
@@ -1023,8 +1018,8 @@ impl ExtData {
             Terminal::True => Self::TRUE,
             Terminal::False => Self::FALSE,
             Terminal::PkK(ref k) => Self::pk_k(params, k),
-            Terminal::PkH(ref k) => Self::pk_h::<_, Ctx>(Some(k)),
-            Terminal::RawPkH(..) => Self::pk_h::<Pk, Ctx>(None),
+            Terminal::PkH(ref k) => Self::pk_h(params, Some(k)),
+            Terminal::RawPkH(..) => Self::pk_h(params, Option::<&String>::None), // String generic is a dummy
             Terminal::Multi(ref thresh) => Self::multi(thresh),
             Terminal::MultiA(ref thresh) => Self::multi_a(thresh),
             Terminal::After(t) => Self::after(t),

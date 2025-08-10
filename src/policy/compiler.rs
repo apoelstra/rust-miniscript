@@ -780,7 +780,7 @@ where
             insert_wrap!(AstElemExt::terminal(Miniscript::TRUE));
         }
         Concrete::Key(ref pk) => {
-            insert_wrap!(AstElemExt::terminal(Miniscript::pk_h(pk.clone())));
+            insert_wrap!(AstElemExt::terminal(Miniscript::pk_h(&Ctx::SANE, pk.clone())));
             insert_wrap!(AstElemExt::terminal(Miniscript::pk_k(&Ctx::SANE, pk.clone())));
         }
         Concrete::After(n) => insert_wrap!(AstElemExt::terminal(Miniscript::after(n))),
