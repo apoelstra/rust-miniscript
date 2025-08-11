@@ -6,8 +6,10 @@ use bitcoin::hashes::hash160;
 use bitcoin::TapLeafHash;
 
 use super::{Placeholder, Satisfaction, Witness};
+use crate::miniscript::limits::{MAX_PUBKEYS_IN_CHECKSIGADD, MAX_PUBKEYS_PER_MULTISIG};
 use crate::plan::AssetProvider;
-use crate::{AbsLockTime, MiniscriptKey, RelLockTime, ScriptContext, ToPublicKey};
+use crate::prelude::*;
+use crate::{AbsLockTime, MiniscriptKey, RelLockTime, ScriptContext, Threshold, ToPublicKey};
 
 impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
     pub(super) const IMPOSSIBLE: Self = Self {
@@ -93,6 +95,118 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
                 ..Self::TRIVIAL
             },
         )
+    }
+
+    /// The (dissatisfaction, satisfaction) pair for a `multi` fragment.
+    pub(super) fn multi<S, Ctx>(
+        stfr: &S,
+        thresh: &Threshold<Pk, MAX_PUBKEYS_PER_MULTISIG>,
+        leaf_hash: &TapLeafHash,
+    ) -> (Self, Self)
+    where
+        S: AssetProvider<Pk>,
+        Ctx: ScriptContext,
+    {
+        let dissat = Self {
+            stack: Witness::Stack(vec![Placeholder::PushZero; thresh.k() + 1]),
+            ..Self::TRIVIAL
+        };
+
+        // Collect all available signatures
+        let mut sig_count = 0;
+        let mut sigs = Vec::with_capacity(thresh.k());
+        for pk in thresh.data() {
+            match Witness::signature::<_, Ctx>(stfr, pk, leaf_hash) {
+                Witness::Stack(sig) => {
+                    sigs.push(sig);
+                    sig_count += 1;
+                }
+                Witness::Impossible => {}
+                Witness::Unavailable => {
+                    unreachable!("Signature satisfaction without witness must be impossible")
+                }
+            }
+        }
+
+        if sig_count < thresh.k() {
+            (dissat, Self::IMPOSSIBLE)
+        } else {
+            // Throw away the most expensive ones
+            for _ in 0..sig_count - thresh.k() {
+                let max_idx = sigs
+                    .iter()
+                    .enumerate()
+                    .max_by_key(|&(_, v)| v.len())
+                    .unwrap()
+                    .0;
+                sigs[max_idx] = vec![];
+            }
+
+            (
+                dissat,
+                Self {
+                    stack: sigs.into_iter().fold(Witness::push_0(), |acc, sig| {
+                        Witness::combine(acc, Witness::Stack(sig))
+                    }),
+                    has_sig: true,
+                    ..Self::TRIVIAL
+                },
+            )
+        }
+    }
+
+    /// The (dissatisfaction, satisfaction) pair for a `multi` fragment.
+    pub(super) fn multi_a<S, Ctx>(
+        stfr: &S,
+        thresh: &Threshold<Pk, MAX_PUBKEYS_IN_CHECKSIGADD>,
+        leaf_hash: &TapLeafHash,
+    ) -> (Self, Self)
+    where
+        S: AssetProvider<Pk>,
+        Ctx: ScriptContext,
+    {
+        let dissat = Self {
+            stack: Witness::Stack(vec![Placeholder::PushZero; thresh.n()]),
+            ..Self::TRIVIAL
+        };
+
+        // Collect all available signatures
+        let mut sig_count = 0;
+        let mut sigs = vec![vec![Placeholder::PushZero]; thresh.n()];
+        for (i, pk) in thresh.iter().rev().enumerate() {
+            match Witness::signature::<_, Ctx>(stfr, pk, leaf_hash) {
+                Witness::Stack(sig) => {
+                    sigs[i] = sig;
+                    sig_count += 1;
+                    // This a privacy issue, we are only selecting the first available
+                    // sigs. Incase pk at pos 1 is not selected, we know we did not have access to it
+                    // bitcoin core also implements the same logic for MULTISIG, so I am not bothering
+                    // permuting the sigs for now
+                    if sig_count == thresh.k() {
+                        break;
+                    }
+                }
+                Witness::Impossible => {}
+                Witness::Unavailable => {
+                    unreachable!("Signature satisfaction without witness must be impossible")
+                }
+            }
+        }
+
+        if sig_count < thresh.k() {
+            (dissat, Self::IMPOSSIBLE)
+        } else {
+            (
+                dissat,
+                Self {
+                    stack: sigs.into_iter().fold(Witness::empty(), |acc, sig| {
+                        Witness::combine(acc, Witness::Stack(sig))
+                    }),
+                    has_sig: true,
+                    ..Self::TRIVIAL
+                },
+            )
+        }
     }
 
     /// The (dissatisfaction, satisfaction) pair for an `after` fragment.

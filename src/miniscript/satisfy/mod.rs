@@ -1357,52 +1357,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
                     thresh_fn(thresh, stfr, root_has_sig, leaf_hash, min_fn)
                 }
             }
-            Terminal::Multi(ref thresh) => {
-                // Collect all available signatures
-                let mut sig_count = 0;
-                let mut sigs = Vec::with_capacity(thresh.k());
-                for pk in thresh.data() {
-                    match Witness::signature::<_, Ctx>(stfr, pk, leaf_hash) {
-                        Witness::Stack(sig) => {
-                            sigs.push(sig);
-                            sig_count += 1;
-                        }
-                        Witness::Impossible => {}
-                        Witness::Unavailable => unreachable!(
-                            "Signature satisfaction without witness must be impossible"
-                        ),
-                    }
-                }
-
-                if sig_count < thresh.k() {
-                    Satisfaction {
-                        stack: Witness::Impossible,
-                        has_sig: false,
-                        relative_timelock: None,
-                        absolute_timelock: None,
-                    }
-                } else {
-                    // Throw away the most expensive ones
-                    for _ in 0..sig_count - thresh.k() {
-                        let max_idx = sigs
-                            .iter()
-                            .enumerate()
-                            .max_by_key(|&(_, v)| v.len())
-                            .unwrap()
-                            .0;
-                        sigs[max_idx] = vec![];
-                    }
-
-                    Satisfaction {
-                        stack: sigs.into_iter().fold(Witness::push_0(), |acc, sig| {
-                            Witness::combine(acc, Witness::Stack(sig))
-                        }),
-                        has_sig: true,
-                        relative_timelock: None,
-                        absolute_timelock: None,
-                    }
-                }
-            }
+            Terminal::Multi(ref thresh) => Self::multi::<_, Ctx>(stfr, thresh, leaf_hash).1,
             Terminal::MultiA(ref thresh) => {
                 // Collect all available signatures
                 let mut sig_count = 0;
@@ -1548,18 +1503,8 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
                     Self::dissatisfy_helper(s, stfr, root_has_sig, leaf_hash, min_fn, thresh_fn)
                 })
                 .fold(Satisfaction::empty(), Satisfaction::concatenate_rev),
-            Terminal::Multi(ref thresh) => Satisfaction {
-                stack: Witness::Stack(vec![Placeholder::PushZero; thresh.k() + 1]),
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
-            Terminal::MultiA(ref thresh) => Satisfaction {
-                stack: Witness::Stack(vec![Placeholder::PushZero; thresh.n()]),
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
+            Terminal::Multi(ref thresh) => Self::multi::<_, Ctx>(stfr, thresh, leaf_hash).0,
+            Terminal::MultiA(ref thresh) => Self::multi_a::<_, Ctx>(stfr, thresh, leaf_hash).0,
         }
     }
 
