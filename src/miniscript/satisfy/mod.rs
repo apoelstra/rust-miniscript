@@ -859,7 +859,7 @@ impl<Pk: MiniscriptKey> Witness<Placeholder<Pk>> {
     fn hash_dissatisfaction() -> Self { Witness::Stack(vec![Placeholder::HashDissatisfaction]) }
 
     /// Construct a satisfaction equivalent to an empty stack
-    fn empty() -> Self { Witness::Stack(vec![]) }
+    const fn empty() -> Self { Witness::Stack(vec![]) }
 
     /// Construct a satisfaction equivalent to `OP_1`
     fn push_1() -> Self { Witness::Stack(vec![Placeholder::PushOne]) }
@@ -1239,91 +1239,17 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
         ) -> Satisfaction<Placeholder<Pk>>,
     {
         match *node.as_inner() {
+            Terminal::False => Self::IMPOSSIBLE,
+            Terminal::True => Self::TRIVIAL,
             Terminal::PkK(ref pk) => Self::pk_k::<_, Ctx>(stfr, pk, leaf_hash).1,
-            Terminal::PkH(ref pk) => {
-                let wit = Witness::signature::<_, Ctx>(stfr, pk, leaf_hash);
-                Satisfaction {
-                    stack: Witness::combine(
-                        wit,
-                        Witness::Stack(vec![Placeholder::Pubkey(pk.clone(), Ctx::pk_len(pk))]),
-                    ),
-                    has_sig: true,
-                    relative_timelock: None,
-                    absolute_timelock: None,
-                }
-            }
-            Terminal::RawPkH(ref pkh) => Satisfaction {
-                stack: Witness::pkh_signature::<_, Ctx>(stfr, pkh, leaf_hash),
-                has_sig: true,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
-            Terminal::After(t) => {
-                let (stack, absolute_timelock) = if stfr.check_after(t.into()) {
-                    (Witness::empty(), Some(t))
-                } else if root_has_sig {
-                    // If the root terminal has signature, the
-                    // signature covers the nLockTime and nSequence
-                    // values. The sender of the transaction should
-                    // take care that it signs the value such that the
-                    // timelock is not met
-                    (Witness::Impossible, None)
-                } else {
-                    (Witness::Unavailable, None)
-                };
-                Satisfaction { stack, has_sig: false, relative_timelock: None, absolute_timelock }
-            }
-            Terminal::Older(t) => {
-                let (stack, relative_timelock) = if stfr.check_older(t.into()) {
-                    (Witness::empty(), Some(t))
-                } else if root_has_sig {
-                    // If the root terminal has signature, the
-                    // signature covers the nLockTime and nSequence
-                    // values. The sender of the transaction should
-                    // take care that it signs the value such that the
-                    // timelock is not met
-                    (Witness::Impossible, None)
-                } else {
-                    (Witness::Unavailable, None)
-                };
-                Satisfaction { stack, has_sig: false, relative_timelock, absolute_timelock: None }
-            }
-            Terminal::Ripemd160(ref h) => Satisfaction {
-                stack: Witness::ripemd160_preimage(stfr, h),
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
-            Terminal::Hash160(ref h) => Satisfaction {
-                stack: Witness::hash160_preimage(stfr, h),
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
-            Terminal::Sha256(ref h) => Satisfaction {
-                stack: Witness::sha256_preimage(stfr, h),
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
-            Terminal::Hash256(ref h) => Satisfaction {
-                stack: Witness::hash256_preimage(stfr, h),
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
-            Terminal::True => Satisfaction {
-                stack: Witness::empty(),
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
-            Terminal::False => Satisfaction {
-                stack: Witness::Impossible,
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
+            Terminal::PkH(ref pk) => Self::pk_h::<_, Ctx>(stfr, pk, leaf_hash).1,
+            Terminal::RawPkH(ref pkh) => Self::raw_pk_h::<_, Ctx>(stfr, pkh, leaf_hash).1,
+            Terminal::After(t) => Self::after(stfr, t, root_has_sig).1,
+            Terminal::Older(t) => Self::older(stfr, t, root_has_sig).1,
+            Terminal::Ripemd160(ref h) => Self::ripemd160(stfr, h).1,
+            Terminal::Hash160(ref h) => Self::hash160(stfr, h).1,
+            Terminal::Sha256(ref h) => Self::sha256(stfr, h).1,
+            Terminal::Hash256(ref h) => Self::hash256(stfr, h).1,
             Terminal::Alt(ref sub)
             | Terminal::Swap(ref sub)
             | Terminal::Check(ref sub)
@@ -1547,50 +1473,18 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
         ) -> Satisfaction<Placeholder<Pk>>,
     {
         match *node.as_inner() {
+            Terminal::False => Self::TRIVIAL,
+            Terminal::True => Self::IMPOSSIBLE,
             Terminal::PkK(ref pk) => Self::pk_k::<_, Ctx>(stfr, pk, leaf_hash).0,
-            Terminal::PkH(ref pk) => Satisfaction {
-                stack: Witness::combine(
-                    Witness::push_0(),
-                    Witness::Stack(vec![Placeholder::Pubkey(pk.clone(), Ctx::pk_len(pk))]),
-                ),
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
-            Terminal::RawPkH(ref pkh) => Satisfaction {
-                stack: Witness::combine(
-                    Witness::push_0(),
-                    Witness::pkh_public_key::<_, Ctx>(stfr, pkh),
-                ),
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
-            Terminal::False => Satisfaction {
-                stack: Witness::empty(),
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
-            Terminal::True
-            | Terminal::Older(_)
-            | Terminal::After(_)
-            | Terminal::Verify(_)
-            | Terminal::OrC(..) => Satisfaction {
-                stack: Witness::Impossible,
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
-            Terminal::Sha256(_)
-            | Terminal::Hash256(_)
-            | Terminal::Ripemd160(_)
-            | Terminal::Hash160(_) => Satisfaction {
-                stack: Witness::hash_dissatisfaction(),
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
+            Terminal::PkH(ref pk) => Self::pk_h::<_, Ctx>(stfr, pk, leaf_hash).0,
+            Terminal::RawPkH(ref pkh) => Self::raw_pk_h::<_, Ctx>(stfr, pkh, leaf_hash).0,
+            Terminal::After(t) => Self::after(stfr, t, root_has_sig).0,
+            Terminal::Older(t) => Self::older(stfr, t, root_has_sig).0,
+            Terminal::Ripemd160(ref h) => Self::ripemd160(stfr, h).0,
+            Terminal::Hash160(ref h) => Self::hash160(stfr, h).0,
+            Terminal::Sha256(ref h) => Self::sha256(stfr, h).0,
+            Terminal::Hash256(ref h) => Self::hash256(stfr, h).0,
+            Terminal::Verify(_) | Terminal::OrC(..) => Self::IMPOSSIBLE,
             Terminal::Alt(ref sub)
             | Terminal::Swap(ref sub)
             | Terminal::Check(ref sub)
