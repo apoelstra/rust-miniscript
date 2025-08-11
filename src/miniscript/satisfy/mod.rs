@@ -6,6 +6,8 @@
 //! scriptpubkeys.
 //!
 
+mod sat_dissat;
+
 use core::{cmp, fmt, mem};
 
 use bitcoin::hashes::hash160;
@@ -1237,12 +1239,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
         ) -> Satisfaction<Placeholder<Pk>>,
     {
         match *node.as_inner() {
-            Terminal::PkK(ref pk) => Satisfaction {
-                stack: Witness::signature::<_, Ctx>(stfr, pk, leaf_hash),
-                has_sig: true,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
+            Terminal::PkK(ref pk) => Self::pk_k::<_, Ctx>(stfr, pk, leaf_hash).1,
             Terminal::PkH(ref pk) => {
                 let wit = Witness::signature::<_, Ctx>(stfr, pk, leaf_hash);
                 Satisfaction {
@@ -1550,12 +1547,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
         ) -> Satisfaction<Placeholder<Pk>>,
     {
         match *node.as_inner() {
-            Terminal::PkK(..) => Satisfaction {
-                stack: Witness::push_0(),
-                has_sig: false,
-                relative_timelock: None,
-                absolute_timelock: None,
-            },
+            Terminal::PkK(ref pk) => Self::pk_k::<_, Ctx>(stfr, pk, leaf_hash).0,
             Terminal::PkH(ref pk) => Satisfaction {
                 stack: Witness::combine(
                     Witness::push_0(),
