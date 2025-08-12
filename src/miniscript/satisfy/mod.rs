@@ -19,7 +19,10 @@ use super::context::SigType;
 use crate::plan::AssetProvider;
 use crate::prelude::*;
 use crate::util::witness_size;
-use crate::{AbsLockTime, Miniscript, MiniscriptKey, RelLockTime, ScriptContext, ToPublicKey};
+use crate::{
+    AbsLockTime, Miniscript, MiniscriptKey, RelLockTime, ScriptContext, ToPublicKey,
+    ValidationParams,
+};
 
 /// No satisfaction exists for a Miniscript fragment; it is equivalent to `OP_FALSE`.
 #[derive(Debug, PartialEq, Eq)]
@@ -769,27 +772,35 @@ impl<Pk: MiniscriptKey + ToPublicKey> Witness<Placeholder<Pk>> {
     }
 
     /// Turn a public key related to a pkh into (part of) a satisfaction
-    fn pkh_public_key<S: AssetProvider<Pk>, Ctx: ScriptContext>(
+    fn pkh_public_key<S: AssetProvider<Pk>>(
         sat: &S,
+        params: &ValidationParams,
+        taproot: bool,
         pkh: &hash160::Hash,
     ) -> Self {
         // public key hashes are assumed to be unavailable
         // instead of impossible since it is the same as pub-key hashes
-        match Ctx::sig_type() {
-            SigType::Ecdsa => match sat.provider_lookup_raw_pkh_pk(pkh) {
-                Some(pk) => Self::Stack(vec![Placeholder::PubkeyHash(*pkh, Ctx::pk_len(&pk))]),
+        if taproot {
+            match sat.provider_lookup_raw_pkh_x_only_pk(pkh) {
+                Some(pk) => {
+                    Self::Stack(vec![Placeholder::PubkeyHash(*pkh, params.encoded_key_size(&pk))])
+                }
                 None => Self::Unavailable,
-            },
-            SigType::Schnorr => match sat.provider_lookup_raw_pkh_x_only_pk(pkh) {
-                Some(pk) => Self::Stack(vec![Placeholder::PubkeyHash(*pkh, Ctx::pk_len(&pk))]),
+            }
+        } else {
+            match sat.provider_lookup_raw_pkh_pk(pkh) {
+                Some(pk) => {
+                    Self::Stack(vec![Placeholder::PubkeyHash(*pkh, params.encoded_key_size(&pk))])
+                }
                 None => Self::Unavailable,
-            },
+            }
         }
     }
 
     /// Turn a key/signature pair related to a pkh into (part of) a satisfaction
-    fn pkh_signature<S: AssetProvider<Pk>, Ctx: ScriptContext>(
+    fn pkh_signature<S: AssetProvider<Pk>>(
         sat: &S,
+        params: &ValidationParams,
         pkh: &hash160::Hash,
         leaf_hash: Option<TapLeafHash>,
     ) -> Self {
@@ -797,7 +808,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Witness<Placeholder<Pk>> {
             match sat.provider_lookup_raw_pkh_tap_leaf_script_sig(&(*pkh, leaf_hash)) {
                 Some((pk, size)) => Self::Stack(vec![
                     Placeholder::SchnorrSigPkHash(*pkh, leaf_hash, size),
-                    Placeholder::PubkeyHash(*pkh, Ctx::pk_len(&pk)),
+                    Placeholder::PubkeyHash(*pkh, params.encoded_key_size(&pk)),
                 ]),
                 None => Self::Impossible,
             }
@@ -805,7 +816,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Witness<Placeholder<Pk>> {
             match sat.provider_lookup_raw_pkh_ecdsa_sig(pkh) {
                 Some(pk) => Self::Stack(vec![
                     Placeholder::EcdsaSigPkHash(*pkh),
-                    Placeholder::PubkeyHash(*pkh, Ctx::pk_len(&pk)),
+                    Placeholder::PubkeyHash(*pkh, params.encoded_key_size(&pk)),
                 ]),
                 None => Self::Impossible,
             }

@@ -12,7 +12,7 @@ use crate::plan::AssetProvider;
 use crate::prelude::*;
 use crate::{
     AbsLockTime, Miniscript, MiniscriptKey, RelLockTime, ScriptContext, Terminal, Threshold,
-    ToPublicKey,
+    ToPublicKey, ValidationParams,
 };
 
 impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
@@ -45,24 +45,34 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
     }
 
     /// The (dissatisfaction, satisfaction) pair for a `pk_h` fragment.
-    fn pk_h<S, Ctx>(stfr: &S, pk: &Pk, leaf_hash: Option<TapLeafHash>) -> (Self, Self)
+    fn pk_h<S>(
+        stfr: &S,
+        params: &ValidationParams,
+        pk: &Pk,
+        leaf_hash: Option<TapLeafHash>,
+    ) -> (Self, Self)
     where
         S: AssetProvider<Pk>,
-        Ctx: ScriptContext,
     {
         let wit = Witness::signature(stfr, pk, leaf_hash);
         (
             Self {
                 stack: Witness::combine(
                     Witness::push_0(),
-                    Witness::Stack(vec![Placeholder::Pubkey(pk.clone(), Ctx::pk_len(pk))]),
+                    Witness::Stack(vec![Placeholder::Pubkey(
+                        pk.clone(),
+                        params.encoded_key_size(pk),
+                    )]),
                 ),
                 ..Self::TRIVIAL
             },
             Self {
                 stack: Witness::combine(
                     wit,
-                    Witness::Stack(vec![Placeholder::Pubkey(pk.clone(), Ctx::pk_len(pk))]),
+                    Witness::Stack(vec![Placeholder::Pubkey(
+                        pk.clone(),
+                        params.encoded_key_size(pk),
+                    )]),
                 ),
                 has_sig: true,
                 ..Self::TRIVIAL
@@ -71,25 +81,25 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
     }
 
     /// The (dissatisfaction, satisfaction) pair for a `pk_h` fragment.
-    fn raw_pk_h<S, Ctx>(
+    fn raw_pk_h<S>(
         stfr: &S,
+        params: &ValidationParams,
         pkh: &hash160::Hash,
         leaf_hash: Option<TapLeafHash>,
     ) -> (Self, Self)
     where
         S: AssetProvider<Pk>,
-        Ctx: ScriptContext,
     {
         (
             Self {
                 stack: Witness::combine(
                     Witness::push_0(),
-                    Witness::pkh_public_key::<_, Ctx>(stfr, pkh),
+                    Witness::pkh_public_key(stfr, params, leaf_hash.is_some(), pkh),
                 ),
                 ..Self::TRIVIAL
             },
             Self {
-                stack: Witness::pkh_signature::<_, Ctx>(stfr, pkh, leaf_hash),
+                stack: Witness::pkh_signature(stfr, params, pkh, leaf_hash),
                 has_sig: true,
                 ..Self::TRIVIAL
             },
@@ -309,6 +319,7 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
         Ctx: ScriptContext,
         Sat: AssetProvider<Pk>,
     {
+        let params = node.validated_params();
         let min_fn = if malleable {
             Self::minimum_mall
         } else {
@@ -326,8 +337,8 @@ impl<Pk: MiniscriptKey + ToPublicKey> Satisfaction<Placeholder<Pk>> {
                 Terminal::False => (Self::TRIVIAL, Self::IMPOSSIBLE),
                 Terminal::True => (Self::IMPOSSIBLE, Self::TRIVIAL),
                 Terminal::PkK(ref pk) => Self::pk_k(stfr, pk, leaf_hash),
-                Terminal::PkH(ref pk) => Self::pk_h::<_, Ctx>(stfr, pk, leaf_hash),
-                Terminal::RawPkH(ref pkh) => Self::raw_pk_h::<_, Ctx>(stfr, pkh, leaf_hash),
+                Terminal::PkH(ref pk) => Self::pk_h(stfr, params, pk, leaf_hash),
+                Terminal::RawPkH(ref pkh) => Self::raw_pk_h(stfr, params, pkh, leaf_hash),
                 Terminal::Multi(ref thresh) => Self::multi(stfr, thresh),
                 Terminal::MultiA(ref thresh) => Self::multi_a(stfr, thresh, leaf_hash.expect("leaf_hash is present when Ctx = Tap, which must be true if multi_a is present")),
                 Terminal::After(t) => Self::after(stfr, t, root_has_sig),
