@@ -451,14 +451,14 @@ impl CompilerExtData {
         }
     }
 
-    fn threshold<S>(k: usize, n: usize, mut sub_ck: S) -> Self
+    fn threshold<const N: usize, Pk, S>(thresh: &crate::Threshold<Pk, N>, mut sub_ck: S) -> Self
     where
         S: FnMut(usize) -> Self,
     {
-        let k_over_n = k as f64 / n as f64;
+        let k_over_n = f64::from(PositiveF64::k_over_n(thresh));
         let mut sat_cost = 0.0;
         let mut dissat_cost = 0.0;
-        for i in 0..n {
+        for i in 0..thresh.n() {
             let sub = sub_ck(i);
             sat_cost += sub.sat_cost;
             dissat_cost += sub.dissat_cost.unwrap();
@@ -996,7 +996,6 @@ where
             best_compilations_or(&mut ret, policy_cache, policy, subs, sat_prob, dissat_prob)?;
         }
         Concrete::Thresh(ref thresh) => {
-            let k = thresh.k();
             let n = thresh.n();
             let k_over_n = PositiveF64::k_over_n(thresh);
 
@@ -1058,7 +1057,7 @@ where
             if let Ok(ms) = Miniscript::from_ast(ast) {
                 let ast_ext = AstElemExt {
                     ms: Arc::new(ms),
-                    comp_ext_data: CompilerExtData::threshold(k, n, |i| sub_ext_data[i]),
+                    comp_ext_data: CompilerExtData::threshold(thresh, |i| sub_ext_data[i]),
                 };
                 insert_wrap!(ast_ext);
             }
