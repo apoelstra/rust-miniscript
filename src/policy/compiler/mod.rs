@@ -14,7 +14,7 @@ use std::error;
 
 use sync::Arc;
 
-use self::ext_data::{AstElemExt, CompilerExtData};
+use self::ext_data::AstElemExt;
 use crate::miniscript::context::SigType;
 use crate::miniscript::types::{self, Type};
 use crate::miniscript::ScriptContext;
@@ -523,8 +523,6 @@ where
             let n = thresh.n();
             let k_over_n = PositiveF64::k_over_n(thresh);
 
-            let mut sub_ext_data = Vec::with_capacity(n);
-
             let mut best_es = Vec::with_capacity(n);
             let mut best_ws = Vec::with_capacity(n);
 
@@ -547,8 +545,8 @@ where
                 let bw = best(types::Base::W, policy_cache, ast.as_ref(), sp, dp)?;
 
                 let diff = be.cost_1d(sp, dp) - bw.cost_1d(sp, dp);
-                best_es.push((be.comp_ext_data, be));
-                best_ws.push((bw.comp_ext_data, bw));
+                best_es.push(be);
+                best_ws.push(bw);
 
                 if diff < min_value.1 {
                     min_value.0 = i;
@@ -558,31 +556,19 @@ where
 
             // Construct the threshold, swapping the index of the best (i.e. most
             // advantageous to be a E vs a W) entry into the first slot so that
-            // it can be an E.
+            // it can be an E. Do this in the `best_ws` vector to minimize the
+            // number of swaps that need to be done.
+            mem::swap(&mut best_ws[min_value.0], &mut best_es[min_value.0]);
+            best_ws.swap(0, min_value.0);
             let mut idx = 0;
             let ast = Terminal::Thresh(thresh.map_ref(|_| {
-                let ret = if idx == 0 {
-                    // swap 0 with min_value...
-                    sub_ext_data.push(best_es[min_value.0].0);
-                    Arc::clone(&best_es[min_value.0].1.ms)
-                } else if idx == min_value.0 {
-                    // swap min_value with 0...
-                    sub_ext_data.push(best_ws[0].0);
-                    Arc::clone(&best_ws[0].1.ms)
-                } else {
-                    // ...and leave everything else unchanged
-                    sub_ext_data.push(best_ws[idx].0);
-                    Arc::clone(&best_ws[idx].1.ms)
-                };
                 idx += 1;
-                ret
+                Arc::clone(&best_ws[idx - 1].ms)
             }));
 
             if let Ok(ms) = Miniscript::from_ast(ast) {
-                let ast_ext = AstElemExt {
-                    ms: Arc::new(ms),
-                    comp_ext_data: CompilerExtData::threshold(thresh, |i| sub_ext_data[i]),
-                };
+                let ast_ext =
+                    AstElemExt::threshold(ms, f64::from(PositiveF64::k_over_n(thresh)), &best_ws);
                 insert_wrap!(ast_ext);
             }
 

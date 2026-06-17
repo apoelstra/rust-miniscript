@@ -243,6 +243,23 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
         })
     }
 
+    pub fn threshold(ms: Miniscript<Pk, Ctx>, k_over_n: f64, subs: &[Self]) -> Self {
+        let mut sat_cost = 0.0;
+        let mut dissat_cost = 0.0;
+        for sub in subs {
+            sat_cost += sub.comp_ext_data.sat_cost;
+            dissat_cost += sub.comp_ext_data.dissat_cost.unwrap();
+        }
+
+        Self {
+            ms: Arc::new(ms),
+            comp_ext_data: CompilerExtData {
+                sat_cost: sat_cost * k_over_n + dissat_cost * (1.0 - k_over_n),
+                dissat_cost: Some(dissat_cost),
+            },
+        }
+    }
+
     pub fn cast_alt(&self) -> Result<Self, types::ErrorKind> {
         Ok(Self {
             ms: Self::compose_typeck_only(
@@ -489,23 +506,5 @@ impl CompilerExtData {
 
     pub fn and_n(left: Self, right: Self) -> Self {
         Self { sat_cost: left.sat_cost + right.sat_cost, dissat_cost: left.dissat_cost }
-    }
-
-    pub fn threshold<const N: usize, Pk, S>(thresh: &crate::Threshold<Pk, N>, mut sub_ck: S) -> Self
-    where
-        S: FnMut(usize) -> Self,
-    {
-        let k_over_n = f64::from(PositiveF64::k_over_n(thresh));
-        let mut sat_cost = 0.0;
-        let mut dissat_cost = 0.0;
-        for i in 0..thresh.n() {
-            let sub = sub_ck(i);
-            sat_cost += sub.sat_cost;
-            dissat_cost += sub.dissat_cost.unwrap();
-        }
-        Self {
-            sat_cost: sat_cost * k_over_n + dissat_cost * (1.0 - k_over_n),
-            dissat_cost: Some(dissat_cost),
-        }
     }
 }
