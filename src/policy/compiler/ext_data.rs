@@ -101,42 +101,42 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
 
     /// Helper functions to compose two Miniscript fragments, where we assume
     /// by construction that all validation parameters are upheld.
-    fn compose_typeck_only(
-        term: Terminal<Pk, Ctx>,
-    ) -> Result<Arc<Miniscript<Pk, Ctx>>, types::Error> {
-        let ty = types::Type::type_check(&term)?;
+    fn compose_typeck_only(term: Terminal<Pk, Ctx>, ty: types::Type) -> Arc<Miniscript<Pk, Ctx>> {
         let ext = types::ExtData::type_check(&term);
-        Ok(Arc::new(Miniscript::from_components_unchecked(term, ty, ext)))
+        Arc::new(Miniscript::from_components_unchecked(term, ty, ext))
     }
 
-    pub fn and_b(left: &Self, right: &Self) -> Result<Self, types::Error> {
+    pub fn and_b(left: &Self, right: &Self) -> Result<Self, types::ErrorKind> {
         Ok(Self {
-            ms: Self::compose_typeck_only(Terminal::AndB(
-                Arc::clone(&left.ms),
-                Arc::clone(&right.ms),
-            ))?,
+            ms: Self::compose_typeck_only(
+                Terminal::AndB(Arc::clone(&left.ms), Arc::clone(&right.ms)),
+                types::Type::and_b(left.ms.ty, right.ms.ty)?,
+            ),
             comp_ext_data: CompilerExtData::and_b(left.comp_ext_data, right.comp_ext_data),
         })
     }
 
-    pub fn and_v(left: &Self, right: &Self) -> Result<Self, types::Error> {
+    pub fn and_v(left: &Self, right: &Self) -> Result<Self, types::ErrorKind> {
         Ok(Self {
-            ms: Self::compose_typeck_only(Terminal::AndV(
-                Arc::clone(&left.ms),
-                Arc::clone(&right.ms),
-            ))?,
+            ms: Self::compose_typeck_only(
+                Terminal::AndV(Arc::clone(&left.ms), Arc::clone(&right.ms)),
+                types::Type::and_v(left.ms.ty, right.ms.ty)?,
+            ),
             comp_ext_data: CompilerExtData::and_v(left.comp_ext_data, right.comp_ext_data),
         })
     }
 
     /// and_n(a,b) == andor(a,b,0) is a conjunction of a and b
-    pub fn and_n(left: &Self, right: &Self) -> Result<Self, types::Error> {
+    pub fn and_n(left: &Self, right: &Self) -> Result<Self, types::ErrorKind> {
         Ok(Self {
-            ms: Self::compose_typeck_only(Terminal::AndOr(
-                Arc::clone(&left.ms),
-                Arc::clone(&right.ms),
-                Arc::new(Miniscript::FALSE),
-            ))?,
+            ms: Self::compose_typeck_only(
+                Terminal::AndOr(
+                    Arc::clone(&left.ms),
+                    Arc::clone(&right.ms),
+                    Arc::new(Miniscript::FALSE),
+                ),
+                types::Type::and_or(left.ms.ty, right.ms.ty, types::Type::FALSE)?,
+            ),
             comp_ext_data: CompilerExtData::and_n(left.comp_ext_data, right.comp_ext_data),
         })
     }
@@ -147,13 +147,12 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
         c: &Self,
         l_weight: PositiveF64,
         r_weight: PositiveF64,
-    ) -> Result<Self, types::Error> {
+    ) -> Result<Self, types::ErrorKind> {
         Ok(Self {
-            ms: Self::compose_typeck_only(Terminal::AndOr(
-                Arc::clone(&a.ms),
-                Arc::clone(&b.ms),
-                Arc::clone(&c.ms),
-            ))?,
+            ms: Self::compose_typeck_only(
+                Terminal::AndOr(Arc::clone(&a.ms), Arc::clone(&b.ms), Arc::clone(&c.ms)),
+                types::Type::and_or(a.ms.ty, b.ms.ty, c.ms.ty)?,
+            ),
             comp_ext_data: CompilerExtData::and_or(
                 a.comp_ext_data,
                 b.comp_ext_data,
@@ -169,12 +168,12 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
         right: &Self,
         l_weight: PositiveF64,
         r_weight: PositiveF64,
-    ) -> Result<Self, types::Error> {
+    ) -> Result<Self, types::ErrorKind> {
         Ok(Self {
-            ms: Self::compose_typeck_only(Terminal::OrB(
-                Arc::clone(&left.ms),
-                Arc::clone(&right.ms),
-            ))?,
+            ms: Self::compose_typeck_only(
+                Terminal::OrB(Arc::clone(&left.ms), Arc::clone(&right.ms)),
+                types::Type::or_b(left.ms.ty, right.ms.ty)?,
+            ),
             comp_ext_data: CompilerExtData::or_b(
                 left.comp_ext_data,
                 right.comp_ext_data,
@@ -189,12 +188,12 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
         right: &Self,
         l_weight: PositiveF64,
         r_weight: PositiveF64,
-    ) -> Result<Self, types::Error> {
+    ) -> Result<Self, types::ErrorKind> {
         Ok(Self {
-            ms: Self::compose_typeck_only(Terminal::OrD(
-                Arc::clone(&left.ms),
-                Arc::clone(&right.ms),
-            ))?,
+            ms: Self::compose_typeck_only(
+                Terminal::OrD(Arc::clone(&left.ms), Arc::clone(&right.ms)),
+                types::Type::or_d(left.ms.ty, right.ms.ty)?,
+            ),
             comp_ext_data: CompilerExtData::or_d(
                 left.comp_ext_data,
                 right.comp_ext_data,
@@ -209,12 +208,12 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
         right: &Self,
         l_weight: PositiveF64,
         r_weight: PositiveF64,
-    ) -> Result<Self, types::Error> {
+    ) -> Result<Self, types::ErrorKind> {
         Ok(Self {
-            ms: Self::compose_typeck_only(Terminal::OrC(
-                Arc::clone(&left.ms),
-                Arc::clone(&right.ms),
-            ))?,
+            ms: Self::compose_typeck_only(
+                Terminal::OrC(Arc::clone(&left.ms), Arc::clone(&right.ms)),
+                types::Type::or_c(left.ms.ty, right.ms.ty)?,
+            ),
             comp_ext_data: CompilerExtData::or_c(
                 left.comp_ext_data,
                 right.comp_ext_data,
@@ -229,12 +228,12 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
         right: &Self,
         l_weight: PositiveF64,
         r_weight: PositiveF64,
-    ) -> Result<Self, types::Error> {
+    ) -> Result<Self, types::ErrorKind> {
         Ok(Self {
-            ms: Self::compose_typeck_only(Terminal::OrI(
-                Arc::clone(&left.ms),
-                Arc::clone(&right.ms),
-            ))?,
+            ms: Self::compose_typeck_only(
+                Terminal::OrI(Arc::clone(&left.ms), Arc::clone(&right.ms)),
+                types::Type::or_i(left.ms.ty, right.ms.ty)?,
+            ),
             comp_ext_data: CompilerExtData::or_i(
                 left.comp_ext_data,
                 right.comp_ext_data,
