@@ -16,7 +16,7 @@ use sync::Arc;
 
 use self::ext_data::{AstElemExt, CompilerExtData};
 use crate::miniscript::context::SigType;
-use crate::miniscript::types::{self, ErrorKind, Type};
+use crate::miniscript::types::{self, Type};
 use crate::miniscript::ScriptContext;
 use crate::policy::Concrete;
 use crate::prelude::*;
@@ -300,91 +300,20 @@ impl CompilationKey {
     }
 }
 
-/// Different types of casts possible for each node.
-#[allow(clippy::type_complexity)]
-#[derive(Copy, Clone)]
-struct Cast<Pk: MiniscriptKey, Ctx: ScriptContext> {
-    node: fn(Arc<Miniscript<Pk, Ctx>>) -> Terminal<Pk, Ctx>,
-    ast_type: fn(types::Type) -> Result<types::Type, ErrorKind>,
-    ext_data: fn(types::ExtData) -> types::ExtData,
-    comp_ext_data: fn(CompilerExtData) -> CompilerExtData,
-}
-
-impl<Pk: MiniscriptKey, Ctx: ScriptContext> Cast<Pk, Ctx> {
-    fn cast(&self, ast: &AstElemExt<Pk, Ctx>) -> Result<AstElemExt<Pk, Ctx>, ErrorKind> {
-        Ok(AstElemExt {
-            ms: Arc::new(Miniscript::from_components_unchecked(
-                (self.node)(Arc::clone(&ast.ms)),
-                (self.ast_type)(ast.ms.ty)?,
-                (self.ext_data)(ast.ms.ext),
-            )),
-            comp_ext_data: (self.comp_ext_data)(ast.comp_ext_data),
-        })
-    }
-}
-
-fn all_casts<Pk: MiniscriptKey, Ctx: ScriptContext>() -> [Cast<Pk, Ctx>; 10] {
+#[allow(clippy::type_complexity)] // clippy really doesn't like AstElemExt
+fn all_casts<Pk: MiniscriptKey, Ctx: ScriptContext>(
+) -> [fn(&AstElemExt<Pk, Ctx>) -> Result<AstElemExt<Pk, Ctx>, types::ErrorKind>; 10] {
     [
-        Cast {
-            ext_data: types::ExtData::cast_check,
-            node: Terminal::Check,
-            ast_type: types::Type::cast_check,
-            comp_ext_data: CompilerExtData::cast_check,
-        },
-        Cast {
-            ext_data: types::ExtData::cast_dupif,
-            node: Terminal::DupIf,
-            ast_type: types::Type::cast_dupif,
-            comp_ext_data: CompilerExtData::cast_dupif,
-        },
-        Cast {
-            ext_data: types::ExtData::cast_likely,
-            node: |ms| Terminal::OrI(Arc::new(Miniscript::FALSE), ms),
-            ast_type: types::Type::cast_likely,
-            comp_ext_data: CompilerExtData::cast_likely,
-        },
-        Cast {
-            ext_data: types::ExtData::cast_unlikely,
-            node: |ms| Terminal::OrI(ms, Arc::new(Miniscript::FALSE)),
-            ast_type: types::Type::cast_unlikely,
-            comp_ext_data: CompilerExtData::cast_unlikely,
-        },
-        Cast {
-            ext_data: types::ExtData::cast_verify,
-            node: Terminal::Verify,
-            ast_type: types::Type::cast_verify,
-            comp_ext_data: CompilerExtData::cast_verify,
-        },
-        Cast {
-            ext_data: types::ExtData::cast_nonzero,
-            node: Terminal::NonZero,
-            ast_type: types::Type::cast_nonzero,
-            comp_ext_data: CompilerExtData::cast_nonzero,
-        },
-        Cast {
-            ext_data: types::ExtData::cast_true,
-            node: |ms| Terminal::AndV(ms, Arc::new(Miniscript::TRUE)),
-            ast_type: types::Type::cast_true,
-            comp_ext_data: CompilerExtData::cast_true,
-        },
-        Cast {
-            ext_data: types::ExtData::cast_swap,
-            node: Terminal::Swap,
-            ast_type: types::Type::cast_swap,
-            comp_ext_data: CompilerExtData::cast_swap,
-        },
-        Cast {
-            node: Terminal::Alt,
-            ast_type: types::Type::cast_alt,
-            ext_data: types::ExtData::cast_alt,
-            comp_ext_data: CompilerExtData::cast_alt,
-        },
-        Cast {
-            ext_data: types::ExtData::cast_zeronotequal,
-            node: Terminal::ZeroNotEqual,
-            ast_type: types::Type::cast_zeronotequal,
-            comp_ext_data: CompilerExtData::cast_zeronotequal,
-        },
+        AstElemExt::cast_check,
+        AstElemExt::cast_dupif,
+        AstElemExt::cast_likely,
+        AstElemExt::cast_unlikely,
+        AstElemExt::cast_verify,
+        AstElemExt::cast_nonzero,
+        AstElemExt::cast_true,
+        AstElemExt::cast_swap,
+        AstElemExt::cast_alt,
+        AstElemExt::cast_zeronotequal,
     ]
 }
 
@@ -458,12 +387,12 @@ fn insert_elem_closure<Pk: MiniscriptKey, Ctx: ScriptContext>(
         cast_stack.push_back(astelem_ext);
     }
 
-    let casts: [Cast<Pk, Ctx>; 10] = all_casts::<Pk, Ctx>();
+    let casts = all_casts::<Pk, Ctx>();
     while !cast_stack.is_empty() {
         let current = cast_stack.pop_front().unwrap();
 
         for c in &casts {
-            if let Ok(new_ext) = c.cast(&current) {
+            if let Ok(new_ext) = c(&current) {
                 if insert_elem(map, new_ext.clone(), sat_prob, dissat_prob) {
                     cast_stack.push_back(new_ext);
                 }
@@ -492,11 +421,11 @@ fn insert_best_wrapped<Pk: MiniscriptKey, Ctx: ScriptContext>(
     insert_elem_closure(map, data, sat_prob, dissat_prob);
 
     if dissat_prob.is_some() {
-        let casts: [Cast<Pk, Ctx>; 10] = all_casts::<Pk, Ctx>();
+        let casts = all_casts::<Pk, Ctx>();
 
         for c in &casts {
             for x in best_compilations(policy_cache, policy, sat_prob, None)?.values() {
-                if let Ok(new_ext) = c.cast(x) {
+                if let Ok(new_ext) = c(x) {
                     insert_elem_closure(map, new_ext, sat_prob, dissat_prob);
                 }
             }

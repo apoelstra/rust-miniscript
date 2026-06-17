@@ -242,6 +242,124 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> AstElemExt<Pk, Ctx> {
             ),
         })
     }
+
+    pub fn cast_alt(&self) -> Result<Self, types::ErrorKind> {
+        Ok(Self {
+            ms: Self::compose_typeck_only(
+                Terminal::Alt(Arc::clone(&self.ms)),
+                types::Type::cast_alt(self.ms.ty)?,
+            ),
+            comp_ext_data: self.comp_ext_data,
+        })
+    }
+
+    pub fn cast_swap(&self) -> Result<Self, types::ErrorKind> {
+        Ok(Self {
+            ms: Self::compose_typeck_only(
+                Terminal::Swap(Arc::clone(&self.ms)),
+                types::Type::cast_swap(self.ms.ty)?,
+            ),
+            comp_ext_data: self.comp_ext_data,
+        })
+    }
+
+    pub fn cast_check(&self) -> Result<Self, types::ErrorKind> {
+        Ok(Self {
+            ms: Self::compose_typeck_only(
+                Terminal::Check(Arc::clone(&self.ms)),
+                types::Type::cast_check(self.ms.ty)?,
+            ),
+            comp_ext_data: self.comp_ext_data,
+        })
+    }
+
+    pub fn cast_dupif(&self) -> Result<Self, types::ErrorKind> {
+        Ok(Self {
+            ms: Self::compose_typeck_only(
+                Terminal::DupIf(Arc::clone(&self.ms)),
+                types::Type::cast_dupif(self.ms.ty)?,
+            ),
+            comp_ext_data: CompilerExtData {
+                sat_cost: 2.0 + self.comp_ext_data.sat_cost,
+                dissat_cost: Some(1.0),
+            },
+        })
+    }
+
+    pub fn cast_verify(&self) -> Result<Self, types::ErrorKind> {
+        Ok(Self {
+            ms: Self::compose_typeck_only(
+                Terminal::Verify(Arc::clone(&self.ms)),
+                types::Type::cast_verify(self.ms.ty)?,
+            ),
+            comp_ext_data: CompilerExtData {
+                sat_cost: self.comp_ext_data.sat_cost,
+                dissat_cost: None,
+            },
+        })
+    }
+
+    pub fn cast_nonzero(&self) -> Result<Self, types::ErrorKind> {
+        Ok(Self {
+            ms: Self::compose_typeck_only(
+                Terminal::NonZero(Arc::clone(&self.ms)),
+                types::Type::cast_nonzero(self.ms.ty)?,
+            ),
+            comp_ext_data: CompilerExtData {
+                sat_cost: self.comp_ext_data.sat_cost,
+                dissat_cost: Some(1.0),
+            },
+        })
+    }
+
+    pub fn cast_zeronotequal(&self) -> Result<Self, types::ErrorKind> {
+        Ok(Self {
+            ms: Self::compose_typeck_only(
+                Terminal::ZeroNotEqual(Arc::clone(&self.ms)),
+                types::Type::cast_zeronotequal(self.ms.ty)?,
+            ),
+            comp_ext_data: self.comp_ext_data,
+        })
+    }
+
+    pub fn cast_true(&self) -> Result<Self, types::ErrorKind> {
+        Ok(Self {
+            ms: Self::compose_typeck_only(
+                Terminal::AndV(Arc::clone(&self.ms), Arc::new(Miniscript::TRUE)),
+                types::Type::cast_true(self.ms.ty)?,
+            ),
+            comp_ext_data: CompilerExtData {
+                sat_cost: self.comp_ext_data.sat_cost,
+                dissat_cost: None,
+            },
+        })
+    }
+
+    pub fn cast_likely(&self) -> Result<Self, types::ErrorKind> {
+        Ok(Self {
+            ms: Self::compose_typeck_only(
+                Terminal::OrI(Arc::new(Miniscript::FALSE), Arc::clone(&self.ms)),
+                types::Type::cast_likely(self.ms.ty)?,
+            ),
+            comp_ext_data: CompilerExtData {
+                sat_cost: 1.0 + self.comp_ext_data.sat_cost,
+                dissat_cost: Some(2.0),
+            },
+        })
+    }
+
+    pub fn cast_unlikely(&self) -> Result<Self, types::ErrorKind> {
+        Ok(Self {
+            ms: Self::compose_typeck_only(
+                Terminal::OrI(Arc::clone(&self.ms), Arc::new(Miniscript::FALSE)),
+                types::Type::cast_unlikely(self.ms.ty)?,
+            ),
+            comp_ext_data: CompilerExtData {
+                sat_cost: 2.0 + self.comp_ext_data.sat_cost,
+                dissat_cost: Some(1.0),
+            },
+        })
+    }
 }
 
 #[derive(Copy, Clone, Debug)]
@@ -299,40 +417,6 @@ impl CompilerExtData {
     fn hash() -> Self { Self { sat_cost: 33.0, dissat_cost: Some(33.0) } }
 
     fn time() -> Self { Self { sat_cost: 0.0, dissat_cost: None } }
-
-    pub fn cast_alt(self) -> Self {
-        Self { sat_cost: self.sat_cost, dissat_cost: self.dissat_cost }
-    }
-
-    pub fn cast_swap(self) -> Self {
-        Self { sat_cost: self.sat_cost, dissat_cost: self.dissat_cost }
-    }
-
-    pub fn cast_check(self) -> Self {
-        Self { sat_cost: self.sat_cost, dissat_cost: self.dissat_cost }
-    }
-
-    pub fn cast_dupif(self) -> Self {
-        Self { sat_cost: 2.0 + self.sat_cost, dissat_cost: Some(1.0) }
-    }
-
-    pub fn cast_verify(self) -> Self { Self { sat_cost: self.sat_cost, dissat_cost: None } }
-
-    pub fn cast_nonzero(self) -> Self { Self { sat_cost: self.sat_cost, dissat_cost: Some(1.0) } }
-
-    pub fn cast_zeronotequal(self) -> Self {
-        Self { sat_cost: self.sat_cost, dissat_cost: self.dissat_cost }
-    }
-
-    pub fn cast_true(self) -> Self { Self { sat_cost: self.sat_cost, dissat_cost: None } }
-
-    pub fn cast_unlikely(self) -> Self {
-        Self { sat_cost: 2.0 + self.sat_cost, dissat_cost: Some(1.0) }
-    }
-
-    pub fn cast_likely(self) -> Self {
-        Self { sat_cost: 1.0 + self.sat_cost, dissat_cost: Some(2.0) }
-    }
 
     pub fn and_b(left: Self, right: Self) -> Self {
         Self {
