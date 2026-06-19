@@ -1276,6 +1276,49 @@ mod tests {
     }
 
     #[test]
+    fn compile_output_regression_1() {
+        let policy = "or(73@and(and(and(or(114@pk(key_28),7@sha256(hash_40)),after(55)),pk(key_69)),pk(key_08)),4@pk(key_33))"
+            .parse::<SPolicy>().unwrap();
+        let compilation: AstElemExt<_, Legacy> =
+            best_t(&mut BTreeMap::new(), &policy, PositiveF64::ONE, None).unwrap();
+
+        assert_eq!(compilation.ms.to_string(), "andor(pk(key_08),and_v(v:pk(key_69),and_v(or_c(pk(key_28),v:sha256(hash_40)),after(55))),pkh(key_33))");
+        assert_eq!(compilation.cost_1d(PositiveF64::ONE, None), 388.09477299559944);
+        assert_eq!(policy.lift().unwrap().sorted(), compilation.ms.lift().unwrap().sorted());
+    }
+
+    #[test]
+    fn compile_output_regression_2() {
+        // This policy demonstrates the need to attempt `vc` casts even if the `c` cast is suboptimal.
+        let policy = "and(or(86@and(TRIVIAL,pk(key_38)),5@pk(key_df)),after(223))"
+            .parse::<SPolicy>()
+            .unwrap();
+        let compilation: AstElemExt<_, Legacy> =
+            best_t(&mut BTreeMap::new(), &policy, PositiveF64::ONE, None).unwrap();
+
+        assert_eq!(
+            compilation.ms.to_string(),
+            "and_v(vc:or_i(pk_h(key_df),and_v(v:1,pk_k(key_38))),after(223))"
+        );
+        assert_eq!(compilation.cost_1d(PositiveF64::ONE, None), 143.9230769230769);
+        assert_eq!(policy.lift().unwrap().sorted(), compilation.ms.lift().unwrap().sorted());
+    }
+
+    #[test]
+    fn compile_output_regression_3() {
+        // This policy demonstrates that you need to try an extra compilation with dissat_prob = None,
+        // then l/u/d/j-wrap that, when inserting the cast closure, in insert_best_wrapped.
+        let policy = "thresh(2,and(after(147),or(114@and(TRIVIAL,pk(key_02)),7@pk(key_c4))),pk(key_37),pk(key_f2))"
+            .parse::<SPolicy>().unwrap();
+        let compilation: AstElemExt<_, Legacy> =
+            best_t(&mut BTreeMap::new(), &policy, PositiveF64::ONE, None).unwrap();
+
+        assert_eq!(compilation.ms.to_string(), "thresh(2,nl:and_v(vc:or_i(pk_h(key_c4),and_v(v:1,pk_k(key_02))),after(147)),s:pk(key_37),s:pk(key_f2))");
+        assert_eq!(compilation.cost_1d(PositiveF64::ONE, None), 299.0165289256198);
+        assert_eq!(policy.lift().unwrap().sorted(), compilation.ms.lift().unwrap().sorted());
+    }
+
+    #[test]
     fn compile_q() {
         let policy = SPolicy::from_str("or(1@and(pk(A),pk(B)),127@pk(C))").expect("parsing");
         let compilation: TapAstElemExt =
