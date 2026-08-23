@@ -141,7 +141,7 @@ pub use crate::miniscript::{hash256, Miniscript};
 pub use crate::policy::semantic::MathSyntaxError;
 use crate::prelude::*;
 pub use crate::primitives::absolute_locktime::{AbsLockTime, AbsLockTimeError};
-pub use crate::primitives::positive_f64::PositiveF64;
+pub use crate::primitives::positive_f64::{NormalizedIterator, PositiveF64};
 pub use crate::primitives::relative_locktime::{RelLockTime, RelLockTimeError};
 pub use crate::primitives::threshold::{Threshold, ThresholdError};
 pub use crate::validation::{Error as ValidationError, ValidationParams};
