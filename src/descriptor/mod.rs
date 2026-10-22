@@ -1268,6 +1268,25 @@ mod tests {
     }
 
     #[test]
+    fn descriptor_eq_distinguishes_thresh_policies() {
+        let two_of_two = Descriptor::<String>::from_str("wsh(thresh(2,pk(A),s:pk(B)))").unwrap();
+        let one_of_two = Descriptor::<String>::from_str("wsh(thresh(1,pk(A),s:pk(B)))").unwrap();
+        let two_of_three =
+            Descriptor::<String>::from_str("wsh(thresh(2,pk(A),s:pk(B),s:pk(C)))").unwrap();
+
+        assert_ne!(two_of_two, one_of_two);
+        assert_ne!(two_of_two, two_of_three);
+        assert_ne!(two_of_two.cmp(&one_of_two), core::cmp::Ordering::Equal);
+        assert_ne!(two_of_two.cmp(&two_of_three), core::cmp::Ordering::Equal);
+        assert_eq!(two_of_two, two_of_two.clone());
+
+        let mut sorted = vec![two_of_two, one_of_two, two_of_three];
+        sorted.sort();
+        sorted.dedup();
+        assert_eq!(sorted.len(), 3);
+    }
+
+    #[test]
     fn desc_rtt_tests() {
         roundtrip_descriptor("c:pk_k()");
         roundtrip_descriptor("wsh(pk())");

@@ -331,7 +331,18 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> Ord for Terminal<Pk, Ctx> {
             cmp::Ordering::Less => cmp::Ordering::Less,
             cmp::Ordering::Greater => cmp::Ordering::Greater,
             cmp::Ordering::Equal => {
-                // But if they are equal then we need to iterate
+                // But if they are equal then we need to iterate. Compare node
+                // counts first since `zip` stops at the shorter iterator.
+                let me_count = DisplayNode::Node(Type::FALSE, self)
+                    .pre_order_iter()
+                    .count();
+                let you_count = DisplayNode::Node(Type::FALSE, other)
+                    .pre_order_iter()
+                    .count();
+                match me_count.cmp(&you_count) {
+                    cmp::Ordering::Equal => {}
+                    ordering => return ordering,
+                }
                 for (me, you) in DisplayNode::Node(Type::FALSE, self)
                     .pre_order_iter()
                     .zip(DisplayNode::Node(Type::FALSE, other).pre_order_iter())

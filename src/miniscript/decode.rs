@@ -232,6 +232,11 @@ impl<Pk: MiniscriptKey, Ctx: ScriptContext> PartialEq for Terminal<Pk, Ctx> {
                 (Self::Hash256(h1), Self::Hash256(h2)) if h1 != h2 => return false,
                 (Self::Ripemd160(h1), Self::Ripemd160(h2)) if h1 != h2 => return false,
                 (Self::Hash160(h1), Self::Hash160(h2)) if h1 != h2 => return false,
+                (Self::Thresh(th1), Self::Thresh(th2))
+                    if th1.k() != th2.k() || th1.n() != th2.n() =>
+                {
+                    return false
+                }
                 (Self::Multi(th1), Self::Multi(th2)) if th1 != th2 => return false,
                 (Self::SortedMulti(th1), Self::SortedMulti(th2)) if th1 != th2 => return false,
                 (Self::MultiA(th1), Self::MultiA(th2)) if th1 != th2 => return false,

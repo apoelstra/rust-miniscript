@@ -1955,6 +1955,88 @@ mod tests {
     }
 
     #[test]
+    fn terminal_eq_compares_thresh_k_and_child_count() {
+        let two_of_two =
+            Miniscript::<String, Segwitv0>::from_str("thresh(2,pk(A),s:pk(B))").unwrap();
+        let one_of_two =
+            Miniscript::<String, Segwitv0>::from_str("thresh(1,pk(A),s:pk(B))").unwrap();
+        let two_of_three =
+            Miniscript::<String, Segwitv0>::from_str("thresh(2,pk(A),s:pk(B),s:pk(C))").unwrap();
+
+        assert_ne!(two_of_two, one_of_two);
+        assert_ne!(two_of_two, two_of_three);
+        assert_eq!(two_of_two, two_of_two.clone());
+    }
+
+    #[test]
+    fn terminal_eq_ord_hash_are_mutually_consistent() {
+        fn std_hash<T: std::hash::Hash>(t: &T) -> u64 {
+            let mut hasher = std::collections::hash_map::DefaultHasher::new();
+            t.hash(&mut hasher);
+            std::hash::Hasher::finish(&hasher)
+        }
+
+        fn parse(s: &str) -> Miniscript<String, Segwitv0> { Miniscript::from_str(s).unwrap() }
+
+        let strings = [
+            "thresh(1,pk(A),s:pk(B))",
+            "thresh(2,pk(A),s:pk(B))",
+            "thresh(2,pk(A),s:pk(B),s:pk(C))",
+            "thresh(2,pk(A),s:pk(C),s:pk(B))",
+            "multi(1,A,B)",
+            "multi(2,A,B)",
+            "multi(1,A,B,C)",
+            "and_v(v:pk(A),pk(B))",
+            "and_v(v:pk(A),and_v(v:pk(B),pk(C)))",
+            "pk(A)",
+            "pk(C)",
+        ];
+        let scripts = strings.map(parse);
+        let scripts_copy = strings.map(parse);
+
+        for (a, b) in scripts.iter().zip(scripts_copy.iter()) {
+            assert_eq!(a, b, "{} vs {}", a, b);
+            assert_eq!(a.cmp(b), cmp::Ordering::Equal, "{} vs {}", a, b);
+            assert_eq!(std_hash(a), std_hash(b), "{} vs {}", a, b);
+        }
+
+        for (i, a) in scripts.iter().enumerate() {
+            for (j, b) in scripts.iter().enumerate() {
+                assert_eq!(a == b, a.cmp(b) == cmp::Ordering::Equal, "{} vs {}", a, b);
+                assert_eq!(a.cmp(b), b.cmp(a).reverse(), "{} vs {}", a, b);
+                if i != j {
+                    assert_ne!(a, b, "{} vs {}", a, b);
+                    assert_ne!(a.cmp(b), cmp::Ordering::Equal, "{} vs {}", a, b);
+                    assert_ne!(std_hash(a), std_hash(b), "{} vs {}", a, b);
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn distinct_miniscripts_survive_sorted_and_hashed_collections() {
+        use std::collections::{BTreeSet, HashSet};
+
+        let distinct = [
+            "thresh(1,pk(A),s:pk(B))",
+            "thresh(2,pk(A),s:pk(B))",
+            "thresh(2,pk(A),s:pk(B),s:pk(C))",
+            "multi(1,A,B)",
+            "multi(1,A,B,C)",
+        ]
+        .map(|s| Miniscript::<String, Segwitv0>::from_str(s).unwrap());
+
+        let mut btree: BTreeSet<_> = distinct.iter().cloned().collect();
+        assert_eq!(btree.len(), distinct.len());
+
+        let mut hash: HashSet<_> = distinct.iter().cloned().collect();
+        assert_eq!(hash.len(), distinct.len());
+
+        assert!(!btree.insert(distinct[0].clone()));
+        assert!(!hash.insert(distinct[0].clone()));
+    }
+
+    #[test]
     fn template_timelocks() {
         use crate::{AbsLockTime, RelLockTime};
         let key_present = bitcoin::PublicKey::from_str(
